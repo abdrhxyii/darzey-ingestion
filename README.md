@@ -54,3 +54,11 @@ python -m pytest
 The next approved milestone is one verified connector, beginning with a small
 Extra Gazette sample. No full historical crawl should be enabled until the
 sample has passed source, hash, PDF, manifest, and provenance checks.
+
+## Current automation
+
+The GitHub Actions workflow checks the R2 credentials and collects the first
+page of Extra Gazettes every six hours. It follows the public download proxy
+used by `documents.gov.lk`, stores each original PDF under `raw/`, and stores a
+provenance manifest under `manifests/`. The workflow intentionally starts with
+the first page only; historical backfill requires a separate approved job.
