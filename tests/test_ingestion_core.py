@@ -64,7 +64,7 @@ def test_extra_gazette_payload_preserves_languages_and_public_proxy():
                 "id": "item-1",
                 "gazetteNoText": "2501/95",
                 "date": "2026-08-14T00:00:00.000Z",
-                "descriptionEnglish": "Example notice",
+                "descriptionEnglish": "Example notice: He said \"read this\"\\nNext line",
                 "contents": [
                     {
                         "language": "ENGLISH",
@@ -75,6 +75,6 @@ def test_extra_gazette_payload_preserves_languages_and_public_proxy():
         ],
         "total": 1,
     }
-    escaped = json.dumps(payload).replace('"', r'\"')
+    escaped = json.dumps(json.dumps(payload, ensure_ascii=False))[1:-1]
     items_html = f'<script>\\"initialData\\":{escaped}</script>'
     assert _initial_items(items_html) == payload["items"]
