@@ -32,8 +32,16 @@ def main() -> int:
     for document in documents:
         body = download_pdf(document.source_pdf_url)
         digest = hashlib.sha256(body).hexdigest()
-        pdf_key = build_pdf_key(document.document_type, document.source_id, document.language, digest)
-        manifest_key = build_manifest_key(document.source, document.source_id, digest)
+        pdf_key = build_pdf_key(
+            document.source,
+            document.document_type,
+            document.source_id,
+            document.language,
+            digest,
+        )
+        manifest_key = build_manifest_key(
+            document.source, document.document_type, document.source_id, digest
+        )
 
         if not store.exists(pdf_key):
             store.put(pdf_key, body, content_type="application/pdf", metadata={"sha256": digest})

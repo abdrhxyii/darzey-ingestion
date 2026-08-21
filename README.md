@@ -62,3 +62,8 @@ page of Extra Gazettes every six hours. It follows the public download proxy
 used by `documents.gov.lk`, stores each original PDF under `raw/`, and stores a
 provenance manifest under `manifests/`. The workflow intentionally starts with
 the first page only; historical backfill requires a separate approved job.
+
+```text
+raw/<source>/<document-type>/<source-id>/<language>/<file>.pdf
+manifests/<source>/<document-type>/<source-id>/<file>.json
+```

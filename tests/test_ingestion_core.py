@@ -9,8 +9,11 @@ from legalai_ingestion.connectors.documents_gov_lk import _initial_items
 
 
 def test_pdf_key_is_language_specific_and_immutable():
-    key = build_pdf_key("extra-gazette", "2501-95", "en", "a" * 64)
-    assert key == "raw/extra-gazette/2501-95/en/2501-95--sha256-aaaaaaaaaaaaaaaa.pdf"
+    key = build_pdf_key("documents.gov.lk", "extra-gazette", "2501-95", "en", "a" * 64)
+    assert key == (
+        "raw/documents.gov.lk/extra-gazette/2501-95/en/"
+        "2501-95--sha256-aaaaaaaaaaaaaaaa.pdf"
+    )
 
 
 def test_manifest_contains_provenance_and_hash():
@@ -29,7 +32,7 @@ def test_manifest_contains_provenance_and_hash():
     digest = hashlib.sha256(body).hexdigest()
     stored = StoredDocument.from_discovered(
         discovered,
-        r2_object_key=build_pdf_key("extra-gazette", "2501-95", "en", digest),
+        r2_object_key=build_pdf_key("documents.gov.lk", "extra-gazette", "2501-95", "en", digest),
         sha256=digest,
         byte_size=len(body),
         pipeline_version="0.1.0",
@@ -39,8 +42,8 @@ def test_manifest_contains_provenance_and_hash():
     assert manifest["sha256"] == digest
     assert manifest["official_page_url"] == discovered.official_page_url
     assert manifest["status"] == "downloaded"
-    assert build_manifest_key(discovered.source, discovered.source_id, digest).startswith(
-        "manifests/documents.gov.lk/2501-95/"
+    assert build_manifest_key(discovered.source, discovered.document_type, discovered.source_id, digest).startswith(
+        "manifests/documents.gov.lk/extra-gazette/2501-95/"
     )
 
 
