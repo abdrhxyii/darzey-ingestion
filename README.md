@@ -3,8 +3,9 @@
 Private-first ingestion pipeline for preserving official Sri Lankan legal
 documents. The first milestone stores original PDFs and collection manifests.
 
-This project intentionally does **not** implement RAG, embeddings, chunking, or
-vector search yet.
+This project intentionally does **not** implement RAG, embeddings, or vector
+search yet. It creates page-cited processing artifacts so a later private
+retrieval store can index them without losing official PDF provenance.
 
 ## First milestone
 
@@ -16,6 +17,9 @@ For each discovered document, the pipeline will:
 4. upload the original PDF to private object storage;
 5. write a JSON manifest for audit and reprocessing;
 6. skip an unchanged document when its hash already exists.
+7. extract native text and use local OCRmyPDF/Tesseract only when pages lack
+   usable text;
+8. write an immutable derived text/OCR artifact under `derived/`.
 
 The source-specific network connector is deliberately kept separate from this
 storage core. This prevents an unverified Government Printer API assumption
@@ -60,5 +64,10 @@ sample has passed source, hash, PDF, manifest, and provenance checks.
 The GitHub Actions workflow checks the R2 credentials and collects the first
 page of Extra Gazettes every six hours. It follows the public download proxy
 used by `documents.gov.lk`, stores each original PDF under `raw/`, and stores a
-provenance manifest under `manifests/`. The workflow intentionally starts with
-the first page only; historical backfill requires a separate approved job.
+provenance manifest under `manifests/`. It extracts selectable text with
+PyMuPDF and uses OCRmyPDF/Tesseract (`eng+sin+tam`) only when a page has too
+little native text. The resulting page text and page-cited chunks are stored as
+an immutable processing artifact under `derived/`; these artifacts are not a
+vector database or the future canonical retrieval store. The workflow
+intentionally starts with the first page only; historical backfill requires a
+separate approved job.

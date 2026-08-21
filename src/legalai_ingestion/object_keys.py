@@ -23,3 +23,19 @@ def build_manifest_key(source: str, source_id: str, sha256: str) -> str:
         f"manifests/{_safe(source)}/{_safe(source_id)}/"
         f"{_safe(source_id)}--sha256-{sha256[:16]}.json"
     )
+
+
+def build_processed_key(
+    document_type: str,
+    document_id: str,
+    language: str | None,
+    sha256: str,
+    processor_version: str,
+) -> str:
+    """Build an immutable key for a reproducible OCR/text processing artifact."""
+
+    safe_document_id = _safe(document_id)
+    return (
+        f"derived/{_safe(document_type)}/{safe_document_id}/{_safe(language or 'und')}/"
+        f"{safe_document_id}--sha256-{sha256[:16]}--{_safe(processor_version)}.json"
+    )
