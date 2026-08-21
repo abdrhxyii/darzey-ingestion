@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime
-from html import unescape
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
@@ -31,8 +30,14 @@ def _initial_items(page_html: str) -> list[dict[str, object]]:
     if not match:
         raise ValueError("Could not find Extra Gazette initialData in official page")
 
-    # The Next.js RSC payload escapes the JSON quotes once inside its script.
-    return json.loads(match.group(1).replace(r'\"', '"'))
+    # The Next.js RSC payload is a JSON string containing another JSON value.
+    # Decode the enclosing string first so embedded quotes, newlines, and other
+    # JSON escapes in descriptions are preserved correctly.
+    try:
+        decoded_items = json.loads(f'"{match.group(1)}"')
+        return json.loads(decoded_items)
+    except json.JSONDecodeError as error:
+        raise ValueError("Could not decode Extra Gazette initialData") from error
 
 
 def discover_extra_gazettes(*, page_url: str = EXTRA_GAZETTES_URL) -> list[DiscoveredDocument]:
