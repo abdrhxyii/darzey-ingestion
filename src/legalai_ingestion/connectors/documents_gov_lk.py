@@ -12,6 +12,13 @@ EXTRA_GAZETTES_URL = "https://documents.gov.lk/web/extra_gazettes"
 USER_AGENT = "LegalAI-ingestion/0.1 (+https://github.com/abdrhxyii/darzey-ingestion)"
 
 
+def normalise_language(value: str) -> str:
+    language = value.strip().lower()
+    return {"english": "en", "sinhala": "si", "sinhalese": "si", "tamil": "ta"}.get(
+        language, language
+    )
+
+
 def _get(url: str, *, timeout: int = 60) -> bytes:
     request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/pdf"})
     with urlopen(request, timeout=timeout) as response:
@@ -63,7 +70,7 @@ def discover_extra_gazettes(*, page_url: str = EXTRA_GAZETTES_URL) -> list[Disco
             if not isinstance(content, dict):
                 continue
             uploaded_file = content.get("uploadedFile")
-            language = str(content.get("language") or "").strip().lower()
+            language = normalise_language(str(content.get("language") or ""))
             if not isinstance(uploaded_file, str) or not uploaded_file or not language:
                 continue
 
@@ -75,7 +82,7 @@ def discover_extra_gazettes(*, page_url: str = EXTRA_GAZETTES_URL) -> list[Disco
                 DiscoveredDocument(
                     source="documents.gov.lk",
                     document_type="extra-gazette",
-                    source_id=f"{item_id}-{language}",
+                    source_id=number.replace("/", "-"),
                     title=title,
                     official_page_url=page_url,
                     source_pdf_url=pdf_url,
