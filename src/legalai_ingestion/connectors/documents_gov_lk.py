@@ -47,10 +47,12 @@ def _initial_items(page_html: str) -> list[dict[str, object]]:
         raise ValueError("Could not decode Extra Gazette initialData") from error
 
 
-def discover_extra_gazettes(*, page_url: str = EXTRA_GAZETTES_URL) -> list[DiscoveredDocument]:
-    items = _initial_items(_get(page_url).decode("utf-8"))
-    discovered: list[DiscoveredDocument] = []
+def documents_from_extra_gazette_items(
+    items: list[dict[str, object]], *, page_url: str, archive_year: str | None = None
+) -> list[DiscoveredDocument]:
+    """Normalize official Extra Gazette API records into source documents."""
 
+    discovered: list[DiscoveredDocument] = []
     for item in items:
         item_id = str(item.get("id") or "").strip()
         number = str(item.get("gazetteNoText") or "").strip()
@@ -87,12 +89,19 @@ def discover_extra_gazettes(*, page_url: str = EXTRA_GAZETTES_URL) -> list[Disco
                     official_page_url=page_url,
                     source_pdf_url=pdf_url,
                     published_date=published_date,
+                    archive_year=archive_year,
                     language=language,
                     document_number=number,
                 )
             )
 
     return discovered
+
+
+def discover_extra_gazettes(*, page_url: str = EXTRA_GAZETTES_URL) -> list[DiscoveredDocument]:
+    """Discover the current page shown on the official Extra Gazette site."""
+
+    return documents_from_extra_gazette_items(_initial_items(_get(page_url).decode("utf-8")), page_url=page_url)
 
 
 def download_pdf(url: str) -> bytes:

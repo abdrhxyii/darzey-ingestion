@@ -11,10 +11,9 @@ import os
 
 from legalai_ingestion.connectors.documents_gov_lk import download_pdf
 from legalai_ingestion.connectors.documents_gov_lk_archive import (
-    discover_extra_gazette_archive_years,
-    discover_extra_gazettes_for_year,
+    discover_extra_gazettes_for_year_range,
 )
-from legalai_ingestion.pipeline import IngestionSummary, store_documents
+from legalai_ingestion.pipeline import store_documents
 from legalai_ingestion.storage.r2 import R2ObjectStore
 
 
@@ -54,29 +53,14 @@ def main() -> int:
         access_key_id=required("R2_ACCESS_KEY_ID"),
         secret_access_key=required("R2_SECRET_ACCESS_KEY"),
     )
-    years = [
-        year
-        for year in discover_extra_gazette_archive_years()
-        if arguments.from_year <= year <= arguments.to_year
-    ]
-    if not years:
-        raise RuntimeError("No official Extra Gazette archive years matched the requested range")
-
-    total = IngestionSummary()
-    for year in years:
-        print(f"Backfilling Extra Gazettes for {year}...")
-        summary = store_documents(
-            discover_extra_gazettes_for_year(year),
-            store=store,
-            download_pdf=download_pdf,
-            pipeline_version=PIPELINE_VERSION,
-            minimum_download_interval_seconds=arguments.minimum_download_interval_seconds,
-        )
-        total.add(summary)
-        print(
-            f"{year}: {summary.checked} checked; {summary.pdfs_uploaded} PDFs uploaded; "
-            f"{summary.manifests_uploaded} manifests uploaded; {summary.failures} failures."
-        )
+    print(f"Backfilling Extra Gazettes published from {arguments.from_year} to {arguments.to_year}...")
+    total = store_documents(
+        discover_extra_gazettes_for_year_range(arguments.from_year, arguments.to_year),
+        store=store,
+        download_pdf=download_pdf,
+        pipeline_version=PIPELINE_VERSION,
+        minimum_download_interval_seconds=arguments.minimum_download_interval_seconds,
+    )
 
     print(
         f"Extra Gazette backfill complete: {total.checked} checked; {total.pdfs_uploaded} PDFs "
