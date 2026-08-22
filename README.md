@@ -64,6 +64,6 @@ provenance manifest under `manifests/`. The workflow intentionally starts with
 the first page only; historical backfill requires a separate approved job.
 
 ```text
-raw/<source>/<document-type>/<source-id>/<language>/<file>.pdf
-manifests/<source>/<document-type>/<source-id>/<file>.json
+raw/<source>/<document-type>/<year>/<source-id>/<language>/<file>.pdf
+manifests/<source>/<document-type>/<year>/<source-id>/<file>.json
 ```

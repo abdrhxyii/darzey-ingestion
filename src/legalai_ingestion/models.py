@@ -20,6 +20,7 @@ class DiscoveredDocument:
     official_page_url: str
     source_pdf_url: str
     published_date: str | None = None
+    archive_year: str | None = None
     language: str | None = None
     document_number: str | None = None
 
@@ -39,6 +40,7 @@ class StoredDocument:
     byte_size: int
     content_type: str
     published_date: str | None
+    archive_year: str | None
     language: str | None
     document_number: str | None
     downloaded_at: str
