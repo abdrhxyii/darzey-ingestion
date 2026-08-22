@@ -8,7 +8,7 @@ import os
 from legalai_ingestion.connectors.documents_gov_lk import download_pdf, discover_extra_gazettes
 from legalai_ingestion.manifests import manifest_bytes
 from legalai_ingestion.models import StoredDocument
-from legalai_ingestion.object_keys import build_manifest_key, build_pdf_key, publication_year
+from legalai_ingestion.object_keys import build_manifest_key, build_pdf_key
 from legalai_ingestion.storage.r2 import R2ObjectStore
 
 
@@ -32,17 +32,15 @@ def main() -> int:
     for document in documents:
         body = download_pdf(document.source_pdf_url)
         digest = hashlib.sha256(body).hexdigest()
-        year = publication_year(document.published_date)
         pdf_key = build_pdf_key(
             document.source,
             document.document_type,
-            year,
             document.source_id,
             document.language,
             digest,
         )
         manifest_key = build_manifest_key(
-            document.source, document.document_type, year, document.source_id, digest
+            document.source, document.document_type, document.source_id, digest
         )
 
         if not store.exists(pdf_key):
