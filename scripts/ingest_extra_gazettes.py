@@ -1,15 +1,15 @@
-"""Collect the first page of official Extra Gazettes into private R2 storage."""
+"""Sync the current official Extra Gazette page into private R2 storage."""
 
 from __future__ import annotations
 
-import hashlib
 import os
 
 from legalai_ingestion.connectors.documents_gov_lk import download_pdf, discover_extra_gazettes
-from legalai_ingestion.manifests import manifest_bytes
-from legalai_ingestion.models import StoredDocument
-from legalai_ingestion.object_keys import build_manifest_key, build_pdf_key
+from legalai_ingestion.pipeline import store_documents
 from legalai_ingestion.storage.r2 import R2ObjectStore
+
+
+PIPELINE_VERSION = "0.3.0"
 
 
 def required(name: str) -> str:
@@ -26,44 +26,17 @@ def main() -> int:
         access_key_id=required("R2_ACCESS_KEY_ID"),
         secret_access_key=required("R2_SECRET_ACCESS_KEY"),
     )
-    documents = discover_extra_gazettes()
-    stored_count = 0
-
-    for document in documents:
-        body = download_pdf(document.source_pdf_url)
-        digest = hashlib.sha256(body).hexdigest()
-        pdf_key = build_pdf_key(
-            document.source,
-            document.document_type,
-            document.source_id,
-            document.language,
-            digest,
-        )
-        manifest_key = build_manifest_key(
-            document.source, document.document_type, document.source_id, digest
-        )
-
-        if not store.exists(pdf_key):
-            store.put(pdf_key, body, content_type="application/pdf", metadata={"sha256": digest})
-
-        stored = StoredDocument.from_discovered(
-            document,
-            r2_object_key=pdf_key,
-            sha256=digest,
-            byte_size=len(body),
-            pipeline_version="0.2.0",
-        )
-        if not store.exists(manifest_key):
-            store.put(
-                manifest_key,
-                manifest_bytes(stored),
-                content_type="application/json",
-                metadata={"sha256": digest},
-            )
-        stored_count += 1
-
-    print(f"Extra Gazette ingestion complete: {stored_count} language documents checked.")
-    return 0
+    summary = store_documents(
+        discover_extra_gazettes(),
+        store=store,
+        download_pdf=download_pdf,
+        pipeline_version=PIPELINE_VERSION,
+    )
+    print(
+        f"Extra Gazette sync complete: {summary.checked} checked; {summary.pdfs_uploaded} PDFs "
+        f"uploaded; {summary.manifests_uploaded} manifests uploaded; {summary.failures} failures."
+    )
+    return 1 if summary.failures else 0
 
 
 if __name__ == "__main__":

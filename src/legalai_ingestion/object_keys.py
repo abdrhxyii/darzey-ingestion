@@ -9,9 +9,13 @@ def _safe(value: str) -> str:
 
 
 def build_pdf_key(
-    source: str, document_type: str, document_id: str, language: str | None, sha256: str
+    source: str,
+    document_type: str,
+    document_id: str,
+    language: str | None,
+    sha256: str,
 ) -> str:
-    """Build an immutable, human-auditable R2 key for a PDF."""
+    """Build an immutable R2 key from stable source identity and content."""
 
     language_part = _safe(language or "und")
     return (
@@ -20,7 +24,9 @@ def build_pdf_key(
     )
 
 
-def build_manifest_key(source: str, document_type: str, source_id: str, sha256: str) -> str:
+def build_manifest_key(
+    source: str, document_type: str, source_id: str, sha256: str
+) -> str:
     return (
         f"manifests/{_safe(source)}/{_safe(document_type)}/{_safe(source_id)}/"
         f"{_safe(source_id)}--sha256-{sha256[:16]}.json"

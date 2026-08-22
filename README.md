@@ -25,13 +25,20 @@ from becoming the storage contract.
 
 ```text
 src/legalai_ingestion/
-  models.py              # normalized source and manifest records
+  models.py              # normalized source and immutable manifest records
   object_keys.py         # deterministic R2 paths
-  manifests.py           # JSON manifest serialization
-  connectors/             # one adapter per official source
+  manifests.py           # manifest serialization
+  connectors/             # source-specific discovery and downloads
+  pipeline.py            # source preservation: PDF + manifest to R2
   storage/                # R2 and local test adapters
+scripts/                  # sync and historical-backfill entry points
+.github/workflows/       # scheduled sync and manual backfill workflows
+docs/                     # source and storage contracts
 tests/                    # non-destructive unit tests
 ```
+
+See [repository structure](docs/repository-structure.md) and the
+[R2 storage contract](docs/r2-storage-layout.md) before adding a source.
 
 ## Configuration
 
@@ -51,19 +58,18 @@ R2_BUCKET
 python -m pytest
 ```
 
-The next approved milestone is one verified connector, beginning with a small
-Extra Gazette sample. No full historical crawl should be enabled until the
-sample has passed source, hash, PDF, manifest, and provenance checks.
-
 ## Current automation
 
-The GitHub Actions workflow checks the R2 credentials and collects the first
-page of Extra Gazettes every six hours. It follows the public download proxy
-used by `documents.gov.lk`, stores each original PDF under `raw/`, and stores a
-provenance manifest under `manifests/`. The workflow intentionally starts with
-the first page only; historical backfill requires a separate approved job.
+The scheduled workflow checks the current official Extra Gazette listing every
+six hours. The manual backfill workflow accepts an archive-year range and is
+used to preserve the historical archive in safe, restartable batches.
 
-```text
-raw/<source>/<document-type>/<source-id>/<language>/<file>.pdf
-manifests/<source>/<document-type>/<source-id>/<file>.json
+## Extra Gazette backfill
+
+The separate **Backfill Extra Gazettes** workflow is manual and accepts a year
+range. Run small ranges, for example `2024` through `2024`; each rerun safely
+preserves only R2 objects that do not already exist.
+
+```powershell
+python scripts/backfill_extra_gazettes.py --from-year 2024 --to-year 2024
 ```
