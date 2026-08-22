@@ -19,7 +19,7 @@ languages:       en, si, ta when published by the source
 | Job | Entry point | Purpose |
 | --- | --- | --- |
 | Current sync | `scripts/ingest_extra_gazettes.py` | Checks the current official listing every six hours. |
-| Historical backfill | `scripts/backfill_extra_gazettes.py` | Walks official archive years in manually chosen ranges. |
+| Historical backfill | `scripts/backfill_extra_gazettes.py` | Scans the current official paginated records API once and preserves only the chosen publication-year range. |
 
 ## R2 objects
 

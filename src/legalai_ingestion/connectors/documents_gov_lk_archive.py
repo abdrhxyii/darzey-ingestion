@@ -1,113 +1,67 @@
-"""Official HTML archive discovery for historical Extra Gazettes."""
+"""Paginated historical Extra Gazette discovery from the current official data API."""
 
 from __future__ import annotations
 
-import re
-from html.parser import HTMLParser
-from urllib.parse import urljoin, urlparse
+import json
+from collections.abc import Iterator
+from dataclasses import replace
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from ..models import DiscoveredDocument
-from .documents_gov_lk import USER_AGENT, normalise_language
+from .documents_gov_lk import EXTRA_GAZETTES_URL, USER_AGENT, documents_from_extra_gazette_items
 
 
-EXTRA_GAZETTE_ARCHIVE_URL = "https://www.documents.gov.lk/view/egz/egz.html"
-EXTRA_GAZETTE_ARCHIVE_YEAR_URL = "https://www.documents.gov.lk/view/egz/egz_{year}.html"
-
-_NUMBER_RE = re.compile(r"\b(\d{3,5})\s*/\s*(\d{1,3})\b")
-_DATE_RE = re.compile(r"\b((?:19|20)\d{2}-\d{2}-\d{2})\b")
-_YEAR_LINK_RE = re.compile(r"egz_((?:19|20)\d{2})\.html", re.I)
-_LANGUAGE_SUFFIXES = {"e": "en", "s": "si", "t": "ta"}
+# This is the public API configured by the Department of Government Printing's
+# current Extra Gazette page. It replaces the retired /view/egz HTML archive.
+EXTRA_GAZETTE_RECORDS_URL = "http://203.143.21.148:4500/website-data/extra-gazette/get-all"
+DEFAULT_PAGE_SIZE = 100
 
 
-class _ArchiveTableParser(HTMLParser):
-    """Collect text and links from the Government Printer's archive tables."""
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.rows: list[list[dict[str, list[str]]]] = []
-        self._row: list[dict[str, list[str]]] | None = None
-        self._cell: dict[str, list[str]] | None = None
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag == "tr":
-            self._row = []
-        elif tag in {"td", "th"} and self._row is not None:
-            self._cell = {"text": [], "links": []}
-            self._row.append(self._cell)
-        elif tag == "a" and self._cell is not None:
-            href = dict(attrs).get("href")
-            if href:
-                self._cell["links"].append(href)
-
-    def handle_data(self, data: str) -> None:
-        if self._cell is not None:
-            self._cell["text"].append(data)
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag in {"td", "th"}:
-            self._cell = None
-        elif tag == "tr" and self._row is not None:
-            self.rows.append(self._row)
-            self._row = None
-
-
-def _get_html(url: str) -> str:
-    request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html"})
+def _get_json(url: str) -> dict[str, object]:
+    request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
     with urlopen(request, timeout=60) as response:
-        return response.read().decode("utf-8", "replace")
+        payload = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Official Extra Gazette API returned a non-object response")
+    return payload
 
 
-def _language(pdf_url: str, link_text: str) -> str:
-    filename = urlparse(pdf_url).path.rsplit("/", 1)[-1]
-    match = re.search(r"_([EST])\.pdf$", filename, re.I)
-    if match:
-        return _LANGUAGE_SUFFIXES[match.group(1).lower()]
-    return normalise_language(link_text) or "und"
+def _page_url(page: int, page_size: int) -> str:
+    return EXTRA_GAZETTE_RECORDS_URL + "?" + urlencode({"limit": page_size, "page": page})
 
 
-def discover_extra_gazette_archive_years() -> list[int]:
-    """Return every year advertised by the official archive index."""
+def discover_extra_gazettes_for_year_range(
+    from_year: int, to_year: int, *, page_size: int = DEFAULT_PAGE_SIZE
+) -> Iterator[DiscoveredDocument]:
+    """Yield official records in the requested publication-year range, one API page at a time."""
 
-    return sorted({int(match.group(1)) for match in _YEAR_LINK_RE.finditer(_get_html(EXTRA_GAZETTE_ARCHIVE_URL))})
+    if from_year > to_year:
+        raise ValueError("from_year must be less than or equal to to_year")
+    if page_size < 1:
+        raise ValueError("page_size must be positive")
 
+    page = 1
+    while True:
+        payload = _get_json(_page_url(page, page_size))
+        items = payload.get("data")
+        if not isinstance(items, list):
+            raise ValueError("Official Extra Gazette API response has no data list")
+        typed_items = [item for item in items if isinstance(item, dict)]
 
-def discover_extra_gazettes_for_year(year: int) -> list[DiscoveredDocument]:
-    """Return every Extra Gazette PDF listed for one official archive year."""
+        for document in documents_from_extra_gazette_items(typed_items, page_url=EXTRA_GAZETTES_URL):
+            if not document.published_date:
+                continue
+            year = int(document.published_date[:4])
+            if from_year <= year <= to_year:
+                yield replace(document, archive_year=str(year))
 
-    page_url = EXTRA_GAZETTE_ARCHIVE_YEAR_URL.format(year=year)
-    parser = _ArchiveTableParser()
-    parser.feed(_get_html(page_url))
-    documents: list[DiscoveredDocument] = []
-
-    for cells in parser.rows:
-        row_text = " ".join(" ".join(cell["text"]) for cell in cells)
-        number_match = _NUMBER_RE.search(row_text)
-        if not number_match:
-            continue
-        document_number = f"{number_match.group(1)}/{number_match.group(2)}"
-        date_match = _DATE_RE.search(row_text)
-        title = " ".join(cells[2]["text"]).strip() if len(cells) > 2 else document_number
-        title = re.sub(r"\s+", " ", title) or document_number
-
-        for cell in cells:
-            link_text = " ".join(cell["text"])
-            for href in cell["links"]:
-                if not href.lower().split("?", 1)[0].endswith(".pdf"):
-                    continue
-                pdf_url = urljoin(page_url, href)
-                documents.append(
-                    DiscoveredDocument(
-                        source="documents.gov.lk",
-                        document_type="extra-gazette",
-                        source_id=document_number.replace("/", "-"),
-                        title=title,
-                        official_page_url=page_url,
-                        source_pdf_url=pdf_url,
-                        published_date=date_match.group(1) if date_match else None,
-                        archive_year=str(year),
-                        language=_language(pdf_url, link_text),
-                        document_number=document_number,
-                    )
-                )
-    return documents
+        pagination = payload.get("pagination")
+        if not isinstance(pagination, dict):
+            raise ValueError("Official Extra Gazette API response has no pagination object")
+        total_pages = pagination.get("totalPages")
+        if not isinstance(total_pages, int) or total_pages < page:
+            raise ValueError("Official Extra Gazette API response has an invalid totalPages value")
+        if page >= total_pages:
+            return
+        page += 1
