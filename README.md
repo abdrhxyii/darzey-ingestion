@@ -67,8 +67,9 @@ used to preserve the historical archive in safe, restartable batches.
 ## Extra Gazette backfill
 
 The separate **Backfill Extra Gazettes** workflow is manual and accepts a year
-range. Run small ranges, for example `2024` through `2024`; each rerun safely
-preserves only R2 objects that do not already exist.
+range. It uses the official public Extra Gazette page, not the site's private
+API host. Run small ranges, for example `2024` through `2024`; each rerun
+safely preserves only R2 objects that do not already exist.
 
 ```powershell
 python scripts/backfill_extra_gazettes.py --from-year 2024 --to-year 2024
