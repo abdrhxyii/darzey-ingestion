@@ -40,7 +40,7 @@ jobs:
         run: python -m playwright install --with-deps chromium
 
       - name: Verify official page pagination
-        run: python scripts/verify_extra_gazette_pagination.py --pages 2
+        run: python scripts/verify_extra_gazette_pagination.py --pages 9
 
       - name: Backfill selected archive years
         env:
