@@ -24,7 +24,10 @@ def test_server_action_response_requires_record_data():
 def test_wait_for_page_items_skips_ancillary_action_response():
     class Page:
         def evaluate(self, *_):
-            return ['0:{"a":"$@1"}', '1:{"data":[{"id":"one"}]}']
+            return [
+                {"url": "/web/extra_gazettes", "status": 200, "text": '0:{"a":"$@1"}'},
+                {"url": "/web/extra_gazettes", "status": 200, "text": '1:{"data":[{"id":"one"}]}'},
+            ]
 
         def wait_for_timeout(self, _):
             raise AssertionError("record data was already available")

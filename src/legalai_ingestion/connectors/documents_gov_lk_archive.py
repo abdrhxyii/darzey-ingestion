@@ -29,7 +29,7 @@ _CAPTURE_PAGE_RESPONSES_SCRIPT = """
       const url = typeof input === "string" ? input : input.url;
       const body = init && typeof init.body === "string" ? init.body : null;
       const text = await response.clone().text();
-      window.__legalaiExtraGazetteResponses.push({ url, body, text });
+      window.__legalaiExtraGazetteResponses.push({ url, body, status: response.status, text });
     } catch (_) {
       // Non-text responses do not participate in record pagination.
     }
@@ -49,6 +49,7 @@ _CAPTURE_PAGE_RESPONSES_SCRIPT = """
         window.__legalaiExtraGazetteResponses.push({
           url: this.__legalaiUrl,
           body: typeof body === "string" ? body : null,
+          status: this.status,
           text: this.responseText,
         });
       } catch (_) {
@@ -80,7 +81,7 @@ def _items_from_server_action(response_body: str) -> list[dict[str, object]]:
     raise ValueError("Official Extra Gazette page returned no record data")
 
 
-def _captured_page_responses(page: object, expected_page: int) -> list[str]:
+def _captured_page_responses(page: object, expected_page: int) -> list[dict[str, object]]:
     """Return every response body captured for one official pagination request."""
 
     return page.evaluate(
@@ -92,7 +93,7 @@ def _captured_page_responses(page: object, expected_page: int) -> list[str]:
               try { return JSON.parse(body)[0]?.page === expectedPage; }
               catch (_) { return false; }
             })()
-          ).map(({ text }) => text).filter(Boolean);
+          ).map(({ url, status, text }) => ({ url, status, text })).filter(({ text }) => Boolean(text));
         }""",
         expected_page,
     )
@@ -103,7 +104,10 @@ def _wait_for_captured_page_items(page: object, expected_page: int) -> list[dict
 
     examined: set[str] = set()
     for _ in range(PAGE_LOAD_TIMEOUT_MS // 500):
-        for response_body in _captured_page_responses(page, expected_page):
+        for response in _captured_page_responses(page, expected_page):
+            response_body = response.get("text")
+            if not isinstance(response_body, str):
+                continue
             if response_body in examined:
                 continue
             examined.add(response_body)
@@ -112,6 +116,12 @@ def _wait_for_captured_page_items(page: object, expected_page: int) -> list[dict
             except ValueError:
                 # The site emits ancillary server-action responses too. Only a
                 # response that actually carries ``data`` is the table payload.
+                preview = response_body.replace("\n", " ")[:300]
+                print(
+                    "Ignoring non-record Extra Gazette response "
+                    f"for page {expected_page}: status={response.get('status')} "
+                    f"url={response.get('url')} body={preview!r}"
+                )
                 continue
         page.wait_for_timeout(500)
     raise TimeoutError(f"Official Extra Gazette page did not return record data for page {expected_page}")
