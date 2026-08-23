@@ -60,7 +60,7 @@ python -m pytest
 
 ## Current automation
 
-The scheduled workflow checks the current official Extra Gazette and Acts
+The scheduled workflow checks the current official Extra Gazette, Acts, and Bills
 listings every six hours. Each document type has a separate manual backfill
 workflow for safe, restartable archive batches.
 
@@ -82,4 +82,10 @@ the same immutable PDF + manifest contract. For example:
 
 ```powershell
 python scripts/backfill_acts.py --from-year 2024 --to-year 2024
+```
+
+## Bills backfill
+
+```powershell
+python scripts/backfill_bills.py --from-year 2024 --to-year 2024
 ```

@@ -8,6 +8,7 @@ from legalai_ingestion.pipeline import store_documents
 from legalai_ingestion.storage.local import LocalObjectStore
 from legalai_ingestion.connectors.documents_gov_lk import _initial_items
 from legalai_ingestion.connectors.documents_gov_lk_acts import documents_from_act_items
+from legalai_ingestion.connectors.documents_gov_lk_bills import documents_from_bill_items
 
 
 def test_pdf_key_is_language_specific_and_immutable():
@@ -140,3 +141,19 @@ def test_act_payload_preserves_languages_and_public_proxy():
     assert all(document.source_id == "18-2026" for document in documents)
     assert documents[0].published_date == "2026-08-04"
     assert documents[0].source_pdf_url.endswith("act-content/act%20%28E%29.pdf")
+
+
+def test_bill_payload_preserves_languages_and_public_proxy():
+    documents = documents_from_bill_items(
+        [{"billNoText": "57/2026", "date": "2026-08-07T00:00:00.000Z",
+          "descriptionEnglish": "Twenty Second Amendment to the Constitution - GS",
+          "contents": [{"language": "ENGLISH", "uploadedFile": "bill-content/57-2026_E.pdf"},
+                       {"language": "SINHALA", "uploadedFile": "bill-content/57-2026_S.pdf"},
+                       {"language": "TAMIL", "uploadedFile": "bill-content/57-2026_T.pdf"}]}]
+    )
+
+    assert [document.language for document in documents] == ["en", "si", "ta"]
+    assert all(document.document_type == "bill" for document in documents)
+    assert all(document.source_id == "57-2026" for document in documents)
+    assert documents[0].published_date == "2026-08-07"
+    assert documents[0].source_pdf_url.endswith("bill-content/57-2026_E.pdf")
