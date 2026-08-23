@@ -32,6 +32,11 @@ jobs:
     name: Preserve Extra Gazette archive
     runs-on: ubuntu-latest
     timeout-minutes: 330
+    env:
+      R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
     concurrency:
       group: extra-gazette-backfill-${{ inputs.from_year || '2026' }}-${{ inputs.to_year || '2026' }}
       cancel-in-progress: false
@@ -47,6 +52,9 @@ jobs:
       - name: Install ingestion dependencies
         run: python -m pip install --upgrade pip && python -m pip install -e ".[production,browser]"
 
+      - name: Preserve latest official Extra Gazettes
+        run: python scripts/ingest_extra_gazettes.py
+
       - name: Install public-page browser
         run: python -m playwright install --with-deps chromium
 
@@ -54,11 +62,6 @@ jobs:
         run: python scripts/verify_extra_gazette_pagination.py --pages 2
 
       - name: Backfill selected archive years
-        env:
-          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: >-
           python scripts/backfill_extra_gazettes.py
           --from-year "${{ inputs.from_year || '2026' }}"

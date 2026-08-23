@@ -38,20 +38,14 @@ scripts/
   backfill_gazettes.py          # Manual historical Gazette backfill
 
 .github/workflows/
-  validate-and-check-r2.yml     # Tests and six-hour current-listing sync
-  backfill-extra-gazettes.yml   # Scheduled/manual, resumable Extra Gazette batches
-  backfill-acts.yml             # Manual, year-range Acts backfill
-  backfill-bills.yml            # Manual, year-range Bills backfill
-  backfill-gazettes.yml         # Manual, year-range Gazette backfill
+  validate-and-check-r2.yml     # Tests and read-only R2 check
+  backfill-extra-gazettes.yml   # Only R2 writer: current sync + resumable archive batches
 
 docs/
   repository-structure.md
   r2-storage-layout.md
   sources/
     documents-gov-lk-extra-gazettes.md
-    documents-gov-lk-acts.md
-    documents-gov-lk-bills.md
-    documents-gov-lk-gazettes.md
 
 tests/
   test_ingestion_core.py
