@@ -40,6 +40,10 @@ scripts/
 .github/workflows/
   validate-and-check-r2.yml     # Tests and read-only R2 check
   backfill-extra-gazettes.yml   # Only R2 writer: current sync + resumable archive batches
+  backfill-acts.yml             # Scheduled/manual, resumable Act batches
+  backfill-bills.yml            # Scheduled/manual, resumable Bill batches
+  backfill-gazettes.yml         # Scheduled/manual, resumable Gazette batches
+  backfill-general-forms.yml    # Scheduled/manual, resumable General Form batches
 
 docs/
   repository-structure.md
