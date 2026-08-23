@@ -9,6 +9,10 @@ from legalai_ingestion.storage.local import LocalObjectStore
 from legalai_ingestion.connectors.documents_gov_lk import _initial_items
 from legalai_ingestion.connectors.documents_gov_lk_acts import documents_from_act_items
 from legalai_ingestion.connectors.documents_gov_lk_bills import documents_from_bill_items
+from legalai_ingestion.connectors.documents_gov_lk_gazettes import (
+    documents_from_gazette_issue_html,
+    listed_gazette_dates,
+)
 
 
 def test_pdf_key_is_language_specific_and_immutable():
@@ -157,3 +161,23 @@ def test_bill_payload_preserves_languages_and_public_proxy():
     assert all(document.source_id == "57-2026" for document in documents)
     assert documents[0].published_date == "2026-08-07"
     assert documents[0].source_pdf_url.endswith("bill-content/57-2026_E.pdf")
+
+
+def test_gazette_payload_uses_date_part_and_section_identity():
+    dates_payload = 'x{"dates":["2026-08-21T00:00:00.000Z"]}'
+    issue_payload = (
+        'x{"partContentArray":{"1":{"2":[{"partNo":1,"sectionId":2,'
+        '"section":"Advertising","language":"ENGLISH","uploadedFile":"gazette-content/example.pdf",'
+        '"uploadedFileFormat":"PDF"},{"uploadedFile":"gazette-content/example.epub",'
+        '"uploadedFileFormat":"EPUB"}]}}}'
+    )
+    dates_html = f'<script>self.__next_f.push({json.dumps([1, dates_payload])})</script>'
+    issue_html = f'<script>self.__next_f.push({json.dumps([1, issue_payload])})</script>'
+
+    assert listed_gazette_dates(dates_html) == ["2026-08-21"]
+    documents = documents_from_gazette_issue_html(
+        issue_html, issue_date="2026-08-21", page_url="https://documents.gov.lk/web/Gazette?date=2026-08-21"
+    )
+    assert len(documents) == 1
+    assert documents[0].source_id == "2026-08-21-part-1-section-2"
+    assert documents[0].language == "en"
