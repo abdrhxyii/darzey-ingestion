@@ -13,6 +13,7 @@ from legalai_ingestion.connectors.documents_gov_lk_gazettes import (
     documents_from_gazette_issue_html,
     listed_gazette_dates,
 )
+from legalai_ingestion.connectors.documents_gov_lk_forms import documents_from_form_items
 
 
 def test_pdf_key_is_language_specific_and_immutable():
@@ -180,4 +181,12 @@ def test_gazette_payload_uses_date_part_and_section_identity():
     )
     assert len(documents) == 1
     assert documents[0].source_id == "2026-08-21-part-1-section-2"
+    assert documents[0].language == "en"
+
+
+def test_general_form_payload_uses_form_number_identity():
+    documents = documents_from_form_items([{"formNoText":"0/21","date":"2026-07-08T00:00:00.000Z","descriptionEnglish":"Railway Warrant","contents":[{"language":"ENGLISH","uploadedFile":"form-content/00-0021_E.pdf"}]}])
+    assert len(documents) == 1
+    assert documents[0].document_type == "general-form"
+    assert documents[0].source_id == "0-21"
     assert documents[0].language == "en"
