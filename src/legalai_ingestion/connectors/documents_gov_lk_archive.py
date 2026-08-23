@@ -80,32 +80,41 @@ def _items_from_server_action(response_body: str) -> list[dict[str, object]]:
     raise ValueError("Official Extra Gazette page returned no record data")
 
 
-def _captured_page_response(page: object, expected_page: int) -> str | None:
-    """Return the response body captured for one official pagination request."""
+def _captured_page_responses(page: object, expected_page: int) -> list[str]:
+    """Return every response body captured for one official pagination request."""
 
     return page.evaluate(
         """expectedPage => {
           const captures = window.__legalaiExtraGazetteResponses || [];
-          const capture = captures.find(({ body }) =>
+          return captures.filter(({ body }) =>
             body &&
             (() => {
               try { return JSON.parse(body)[0]?.page === expectedPage; }
               catch (_) { return false; }
             })()
-          );
-          return capture?.text || null;
+          ).map(({ text }) => text).filter(Boolean);
         }""",
         expected_page,
     )
 
 
-def _wait_for_captured_page_response(page: object, expected_page: int) -> str:
+def _wait_for_captured_page_items(page: object, expected_page: int) -> list[dict[str, object]]:
+    """Wait for the actual record payload among responses for one page request."""
+
+    examined: set[str] = set()
     for _ in range(PAGE_LOAD_TIMEOUT_MS // 500):
-        response_body = _captured_page_response(page, expected_page)
-        if response_body:
-            return response_body
+        for response_body in _captured_page_responses(page, expected_page):
+            if response_body in examined:
+                continue
+            examined.add(response_body)
+            try:
+                return _items_from_server_action(response_body)
+            except ValueError:
+                # The site emits ancillary server-action responses too. Only a
+                # response that actually carries ``data`` is the table payload.
+                continue
         page.wait_for_timeout(500)
-    raise TimeoutError(f"Official Extra Gazette page did not return page {expected_page}")
+    raise TimeoutError(f"Official Extra Gazette page did not return record data for page {expected_page}")
 
 
 def discover_extra_gazettes_for_year_range(
@@ -141,7 +150,7 @@ def discover_extra_gazettes_for_year_range(
             current_page = 1
             # The public page refreshes page one after hydration. Waiting for
             # that request prevents a pagination click from being ignored.
-            items = _items_from_server_action(_wait_for_captured_page_response(page, current_page))
+            items = _wait_for_captured_page_items(page, current_page)
             while True:
                 documents = documents_from_extra_gazette_items(items, page_url=EXTRA_GAZETTES_URL)
                 years = [int(document.published_date[:4]) for document in documents if document.published_date]
@@ -162,7 +171,7 @@ def discover_extra_gazettes_for_year_range(
 
                 expected_page = current_page + 1
                 next_page.click()
-                items = _items_from_server_action(_wait_for_captured_page_response(page, expected_page))
+                items = _wait_for_captured_page_items(page, expected_page)
                 current_page = expected_page
         finally:
             browser.close()
