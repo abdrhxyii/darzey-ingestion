@@ -7,6 +7,7 @@ from legalai_ingestion.object_keys import build_manifest_key, build_pdf_key
 from legalai_ingestion.pipeline import store_documents
 from legalai_ingestion.storage.local import LocalObjectStore
 from legalai_ingestion.connectors.documents_gov_lk import _initial_items
+from legalai_ingestion.connectors.documents_gov_lk_acts import documents_from_act_items
 
 
 def test_pdf_key_is_language_specific_and_immutable():
@@ -116,3 +117,26 @@ def test_extra_gazette_payload_preserves_languages_and_public_proxy():
     escaped = json.dumps(json.dumps(payload, ensure_ascii=False))[1:-1]
     items_html = f'<script>\\"initialData\\":{escaped}</script>'
     assert _initial_items(items_html) == payload["items"]
+
+
+def test_act_payload_preserves_languages_and_public_proxy():
+    documents = documents_from_act_items(
+        [
+            {
+                "actNoText": "18/2026",
+                "date": "2026-08-04T00:00:00.000Z",
+                "descriptionEnglish": "Convention on the Suppression of Terrorist Financing (Amendment)",
+                "contents": [
+                    {"language": "ENGLISH", "uploadedFile": "act-content/act (E).pdf"},
+                    {"language": "SINHALA", "uploadedFile": "act-content/act (S).pdf"},
+                    {"language": "TAMIL", "uploadedFile": "act-content/act (T).pdf"},
+                ],
+            }
+        ]
+    )
+
+    assert [document.language for document in documents] == ["en", "si", "ta"]
+    assert all(document.document_type == "act" for document in documents)
+    assert all(document.source_id == "18-2026" for document in documents)
+    assert documents[0].published_date == "2026-08-04"
+    assert documents[0].source_pdf_url.endswith("act-content/act%20%28E%29.pdf")

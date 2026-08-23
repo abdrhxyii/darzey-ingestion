@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import replace
 
 from ..models import DiscoveredDocument
@@ -124,7 +124,9 @@ def _captured_page_responses(page: object, expected_page: int) -> list[dict[str,
     )
 
 
-def _wait_for_captured_page_items(page: object, expected_page: int) -> list[dict[str, object]]:
+def _wait_for_captured_page_items(
+    page: object, expected_page: int, *, document_label: str = "Extra Gazette"
+) -> list[dict[str, object]]:
     """Wait for the actual record payload among responses for one page request."""
 
     examined: set[str] = set()
@@ -143,27 +145,32 @@ def _wait_for_captured_page_items(page: object, expected_page: int) -> list[dict
                 # response that actually carries ``data`` is the table payload.
                 preview = response_body.replace("\n", " ")[:300]
                 print(
-                    "Ignoring non-record Extra Gazette response "
+                    f"Ignoring non-record {document_label} response "
                     f"for page {expected_page}: status={response.get('status')} "
                     f"url={response.get('url')} body={preview!r}"
                 )
                 continue
         page.wait_for_timeout(500)
-    raise TimeoutError(f"Official Extra Gazette page did not return record data for page {expected_page}")
+    raise TimeoutError(
+        f"Official {document_label} page did not return record data for page {expected_page}"
+    )
 
 
-def discover_extra_gazettes_for_year_range(
+DocumentMapper = Callable[[list[dict[str, object]]], list[DiscoveredDocument]]
+
+
+def discover_documents_for_year_range(
     from_year: int,
     to_year: int,
     *,
+    page_url: str,
+    grid_name: str,
+    document_label: str,
+    documents_from_items: DocumentMapper,
     page_size: int = DEFAULT_PAGE_SIZE,
     max_pages: int | None = None,
 ) -> Iterator[DiscoveredDocument]:
-    """Yield official records in the requested publication-year range.
-
-    The public page is ordered newest first, so this stops once the next pages
-    cannot contain a requested publication year.
-    """
+    """Yield one official documents.gov.lk table over a publication-year range."""
 
     if from_year > to_year:
         raise ValueError("from_year must be less than or equal to to_year")
@@ -176,7 +183,7 @@ def discover_extra_gazettes_for_year_range(
         from playwright.sync_api import sync_playwright
     except ImportError as error:  # pragma: no cover - exercised in GitHub workflow
         raise RuntimeError(
-            "Historical Extra Gazette backfill requires the browser dependency. "
+            f"Historical {document_label} backfill requires the browser dependency. "
             'Install it with: pip install -e ".[browser]"'
         ) from error
 
@@ -185,15 +192,17 @@ def discover_extra_gazettes_for_year_range(
         try:
             page = browser.new_page()
             page.add_init_script(_CAPTURE_PAGE_RESPONSES_SCRIPT)
-            page.goto(EXTRA_GAZETTES_URL, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
-            page.get_by_role("grid", name="Extra Gazettes").wait_for(timeout=PAGE_LOAD_TIMEOUT_MS)
+            page.goto(page_url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
+            page.get_by_role("grid", name=grid_name).wait_for(timeout=PAGE_LOAD_TIMEOUT_MS)
 
             current_page = 1
             # The public page refreshes page one after hydration. Waiting for
             # that request prevents a pagination click from being ignored.
-            items = _wait_for_captured_page_items(page, current_page)
+            items = _wait_for_captured_page_items(
+                page, current_page, document_label=document_label
+            )
             while True:
-                documents = documents_from_extra_gazette_items(items, page_url=EXTRA_GAZETTES_URL)
+                documents = documents_from_items(items)
                 years = [int(document.published_date[:4]) for document in documents if document.published_date]
 
                 for document in documents:
@@ -214,7 +223,36 @@ def discover_extra_gazettes_for_year_range(
 
                 expected_page = current_page + 1
                 next_page.click()
-                items = _wait_for_captured_page_items(page, expected_page)
+                items = _wait_for_captured_page_items(
+                    page, expected_page, document_label=document_label
+                )
                 current_page = expected_page
         finally:
             browser.close()
+
+
+def discover_extra_gazettes_for_year_range(
+    from_year: int,
+    to_year: int,
+    *,
+    page_size: int = DEFAULT_PAGE_SIZE,
+    max_pages: int | None = None,
+) -> Iterator[DiscoveredDocument]:
+    """Yield official records in the requested publication-year range.
+
+    The public page is ordered newest first, so this stops once the next pages
+    cannot contain a requested publication year.
+    """
+
+    yield from discover_documents_for_year_range(
+        from_year,
+        to_year,
+        page_url=EXTRA_GAZETTES_URL,
+        grid_name="Extra Gazettes",
+        document_label="Extra Gazette",
+        documents_from_items=lambda items: documents_from_extra_gazette_items(
+            items, page_url=EXTRA_GAZETTES_URL
+        ),
+        page_size=page_size,
+        max_pages=max_pages,
+    )
