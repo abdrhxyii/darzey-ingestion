@@ -39,6 +39,9 @@ jobs:
       - name: Install public-page browser
         run: python -m playwright install --with-deps chromium
 
+      - name: Verify official page pagination
+        run: python scripts/verify_extra_gazette_pagination.py --pages 2
+
       - name: Backfill selected archive years
         env:
           R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}

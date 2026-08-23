@@ -128,7 +128,11 @@ def _wait_for_captured_page_items(page: object, expected_page: int) -> list[dict
 
 
 def discover_extra_gazettes_for_year_range(
-    from_year: int, to_year: int, *, page_size: int = DEFAULT_PAGE_SIZE
+    from_year: int,
+    to_year: int,
+    *,
+    page_size: int = DEFAULT_PAGE_SIZE,
+    max_pages: int | None = None,
 ) -> Iterator[DiscoveredDocument]:
     """Yield official records in the requested publication-year range.
 
@@ -140,6 +144,8 @@ def discover_extra_gazettes_for_year_range(
         raise ValueError("from_year must be less than or equal to to_year")
     if page_size != DEFAULT_PAGE_SIZE:
         raise ValueError(f"The official page currently uses {DEFAULT_PAGE_SIZE} records per page")
+    if max_pages is not None and max_pages < 1:
+        raise ValueError("max_pages must be positive when provided")
 
     try:
         from playwright.sync_api import sync_playwright
@@ -172,6 +178,8 @@ def discover_extra_gazettes_for_year_range(
                     if from_year <= year <= to_year:
                         yield replace(document, archive_year=str(year))
 
+                if max_pages is not None and current_page >= max_pages:
+                    return
                 if years and max(years) < from_year:
                     return
 
