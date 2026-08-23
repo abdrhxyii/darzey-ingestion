@@ -24,6 +24,10 @@ class ObjectStore(Protocol):
 
     def put(self, key: str, body: bytes, *, content_type: str, metadata: dict[str, str]) -> None: ...
 
+    def get(self, key: str) -> bytes | None: ...
+
+    def replace(self, key: str, body: bytes, *, content_type: str, metadata: dict[str, str]) -> None: ...
+
 
 DownloadPdf = Callable[[str], bytes]
 

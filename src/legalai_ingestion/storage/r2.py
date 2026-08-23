@@ -35,3 +35,17 @@ class R2ObjectStore:
             if error.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
                 return False
             raise
+
+    def get(self, key: str) -> bytes | None:
+        try:
+            response = self.client.get_object(Bucket=self.bucket, Key=key)
+        except self.client.exceptions.ClientError as error:
+            if error.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+                return None
+            raise
+        return response["Body"].read()
+
+    def replace(self, key: str, body: bytes, *, content_type: str, metadata: dict[str, str]) -> None:
+        """Replace a mutable operational-state object, never a preserved source file."""
+
+        self.put(key, body, content_type=content_type, metadata=metadata)

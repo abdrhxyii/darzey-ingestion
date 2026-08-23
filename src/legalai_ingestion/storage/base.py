@@ -9,3 +9,9 @@ class ObjectStore(Protocol):
 
     def exists(self, key: str) -> bool:
         ...
+
+    def get(self, key: str) -> bytes | None:
+        ...
+
+    def replace(self, key: str, body: bytes, *, content_type: str, metadata: dict[str, str]) -> None:
+        ...

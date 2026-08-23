@@ -9,6 +9,7 @@ src/legalai_ingestion/
   object_keys.py               # R2 key construction; no source-specific logic
   manifests.py                 # Immutable manifest serialization
   pipeline.py                  # Shared PDF + manifest preservation service
+  backfill_state.py            # Mutable R2 checkpoints for bounded archive runs
 
   connectors/
     documents_gov_lk.py         # Current documents.gov.lk Extra Gazette listing
@@ -28,7 +29,7 @@ src/legalai_ingestion/
 
 scripts/
   ingest_extra_gazettes.py      # Recurring current-listing sync
-  backfill_extra_gazettes.py    # Manual historical archive backfill
+  backfill_extra_gazettes.py    # Resumable historical archive batch
   ingest_acts.py                # Recurring current Acts sync
   backfill_acts.py              # Manual historical Acts backfill
   ingest_bills.py               # Recurring current Bills sync
@@ -38,7 +39,7 @@ scripts/
 
 .github/workflows/
   validate-and-check-r2.yml     # Tests and six-hour current-listing sync
-  backfill-extra-gazettes.yml   # Manual, year-range historical backfill
+  backfill-extra-gazettes.yml   # Scheduled/manual, resumable Extra Gazette batches
   backfill-acts.yml             # Manual, year-range Acts backfill
   backfill-bills.yml            # Manual, year-range Bills backfill
   backfill-gazettes.yml         # Manual, year-range Gazette backfill
