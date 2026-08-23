@@ -9,6 +9,7 @@ returned when its pagination controls are used.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator
 from dataclasses import replace
 
@@ -73,12 +74,36 @@ def _items_from_server_action(response_body: str) -> list[dict[str, object]]:
             payload = json.loads(value)
         except json.JSONDecodeError:
             continue
-        if not isinstance(payload, dict):
+        items = _record_items_from_payload(payload)
+        if items is not None:
+            return items
+
+    # Next.js normally separates its React Server Component records with
+    # newlines. The official site sometimes compacts multiple records into one
+    # response body instead (for example: ``0:{...} 1:{"data":[...]}``).
+    # Decode the record beginning at each data object so both formats work.
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r'\{"data":', response_body):
+        try:
+            payload, _ = decoder.raw_decode(response_body, match.start())
+        except json.JSONDecodeError:
             continue
-        items = payload.get("data")
-        if isinstance(items, list):
-            return [item for item in items if isinstance(item, dict)]
+        items = _record_items_from_payload(payload)
+        if items is not None:
+            return items
+
     raise ValueError("Official Extra Gazette page returned no record data")
+
+
+def _record_items_from_payload(payload: object) -> list[dict[str, object]] | None:
+    """Return the table rows when a decoded RSC payload contains them."""
+
+    if not isinstance(payload, dict):
+        return None
+    items = payload.get("data")
+    if not isinstance(items, list):
+        return None
+    return [item for item in items if isinstance(item, dict)]
 
 
 def _captured_page_responses(page: object, expected_page: int) -> list[dict[str, object]]:
