@@ -14,8 +14,12 @@ class StateStore(Protocol):
     def replace(self, key: str, body: bytes, *, content_type: str, metadata: dict[str, str]) -> None: ...
 
 
+def checkpoint_key(document_type: str, from_year: int, to_year: int) -> str:
+    return f"state/documents.gov.lk/{document_type}/backfills/{from_year}-{to_year}.json"
+
+
 def extra_gazette_checkpoint_key(from_year: int, to_year: int) -> str:
-    return f"state/documents.gov.lk/extra-gazette/backfills/{from_year}-{to_year}.json"
+    return checkpoint_key("extra-gazette", from_year, to_year)
 
 
 @dataclass(frozen=True)
@@ -31,10 +35,10 @@ class BackfillCheckpoint:
     updated_at: str
 
     @classmethod
-    def new(cls, *, from_year: int, to_year: int) -> "BackfillCheckpoint":
+    def new(cls, *, document_type: str, from_year: int, to_year: int) -> "BackfillCheckpoint":
         return cls(
             source="documents.gov.lk",
-            document_type="extra-gazette",
+            document_type=document_type,
             from_year=from_year,
             to_year=to_year,
             next_page=1,
@@ -62,28 +66,40 @@ class BackfillCheckpoint:
         return (json.dumps(asdict(self), indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
-def load_extra_gazette_checkpoint(store: StateStore, *, from_year: int, to_year: int) -> BackfillCheckpoint:
-    body = store.get(extra_gazette_checkpoint_key(from_year, to_year))
+def load_checkpoint(
+    store: StateStore, *, document_type: str, from_year: int, to_year: int
+) -> BackfillCheckpoint:
+    body = store.get(checkpoint_key(document_type, from_year, to_year))
     if body is None:
-        return BackfillCheckpoint.new(from_year=from_year, to_year=to_year)
+        return BackfillCheckpoint.new(
+            document_type=document_type, from_year=from_year, to_year=to_year
+        )
     checkpoint = BackfillCheckpoint.from_bytes(body)
     if (
         checkpoint.source != "documents.gov.lk"
-        or checkpoint.document_type != "extra-gazette"
+        or checkpoint.document_type != document_type
         or checkpoint.from_year != from_year
         or checkpoint.to_year != to_year
     ):
-        raise ValueError("Extra Gazette backfill checkpoint does not match the requested year range")
+        raise ValueError("Backfill checkpoint does not match the requested document type or year range")
     return checkpoint
 
 
-def save_extra_gazette_checkpoint(store: StateStore, checkpoint: BackfillCheckpoint) -> None:
+def save_checkpoint(store: StateStore, checkpoint: BackfillCheckpoint) -> None:
     store.replace(
-        extra_gazette_checkpoint_key(checkpoint.from_year, checkpoint.to_year),
+        checkpoint_key(checkpoint.document_type, checkpoint.from_year, checkpoint.to_year),
         checkpoint.to_bytes(),
         content_type="application/json",
         metadata={"kind": "backfill-checkpoint"},
     )
+
+
+def load_extra_gazette_checkpoint(store: StateStore, *, from_year: int, to_year: int) -> BackfillCheckpoint:
+    return load_checkpoint(store, document_type="extra-gazette", from_year=from_year, to_year=to_year)
+
+
+def save_extra_gazette_checkpoint(store: StateStore, checkpoint: BackfillCheckpoint) -> None:
+    save_checkpoint(store, checkpoint)
 
 
 def _utc_now() -> str:

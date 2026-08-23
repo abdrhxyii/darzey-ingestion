@@ -64,6 +64,21 @@ Only Extra Gazettes are active. The scheduled workflow first checks for newly
 published Extra Gazettes, then preserves five historical listing pages per run
 and resumes from its R2 checkpoint.
 
+## Resumable document backfills
+
+Acts, Bills, Gazettes, and General Forms each run in their own five-page
+workflow batch and keep a separate checkpoint in R2:
+
+```text
+state/documents.gov.lk/act/backfills/<from-year>-<to-year>.json
+state/documents.gov.lk/bill/backfills/<from-year>-<to-year>.json
+state/documents.gov.lk/gazette/backfills/<from-year>-<to-year>.json
+state/documents.gov.lk/general-form/backfills/<from-year>-<to-year>.json
+```
+
+The checkpoint records the next official page. It advances only after the
+preceding page has fully succeeded, so cancelled workflows resume safely.
+
 ## Extra Gazette backfill
 
 The **Backfill Extra Gazettes** workflow accepts a year range. It uses the

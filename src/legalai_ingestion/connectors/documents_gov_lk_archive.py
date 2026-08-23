@@ -343,3 +343,52 @@ def discover_extra_gazette_pages_for_year_range(
                 current_page = expected_page
         finally:
             browser.close()
+
+
+def discover_document_pages_for_year_range(
+    from_year: int, to_year: int, *, page_url: str, grid_name: str, document_label: str,
+    documents_from_items: DocumentMapper, start_page: int = 1, max_pages: int | None = None,
+) -> Iterator[DiscoveredDocumentPage]:
+    """Yield bounded, year-filtered listing pages for any standard Printer grid."""
+    if start_page < 1:
+        raise ValueError("start_page must be positive")
+    if from_year > to_year:
+        raise ValueError("from_year must be less than or equal to to_year")
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as error:  # pragma: no cover
+        raise RuntimeError(f'Historical {document_label} backfill requires: pip install -e ".[browser]"') from error
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            page.add_init_script(_CAPTURE_PAGE_RESPONSES_SCRIPT)
+            page.goto(page_url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
+            page.get_by_role("grid", name=grid_name).wait_for(timeout=PAGE_LOAD_TIMEOUT_MS)
+            current_page = 1
+            items = _wait_for_captured_page_items(page, current_page, document_label=document_label)
+            while current_page < start_page:
+                next_button = page.get_by_role("button", name="next page button", exact=True).first
+                if not next_button.is_enabled():
+                    return
+                current_page += 1
+                next_button.click()
+                items = _wait_for_captured_page_items(page, current_page, document_label=document_label)
+            yielded = 0
+            while True:
+                mapped = documents_from_items(items)
+                years = [int(item.published_date[:4]) for item in mapped if item.published_date]
+                documents = [replace(item, archive_year=item.published_date[:4]) for item in mapped
+                             if item.published_date and from_year <= int(item.published_date[:4]) <= to_year]
+                yield DiscoveredDocumentPage(current_page, documents)
+                yielded += 1
+                if (max_pages is not None and yielded >= max_pages) or (years and max(years) < from_year):
+                    return
+                next_button = page.get_by_role("button", name="next page button", exact=True).first
+                if not next_button.is_enabled():
+                    return
+                current_page += 1
+                next_button.click()
+                items = _wait_for_captured_page_items(page, current_page, document_label=document_label)
+        finally:
+            browser.close()
