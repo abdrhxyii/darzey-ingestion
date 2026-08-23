@@ -34,8 +34,8 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--pages-per-run",
         type=int,
-        default=10,
-        help="Maximum official listing pages to preserve in this run (default: 10).",
+        default=5,
+        help="Maximum official listing pages to preserve in this run (default: 5).",
     )
     parser.add_argument(
         "--minimum-download-interval-seconds",

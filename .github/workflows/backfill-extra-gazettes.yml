@@ -19,7 +19,7 @@ on:
       pages_per_run:
         description: Maximum official listing pages to preserve in this run
         required: false
-        default: "10"
+        default: "5"
         type: string
   schedule:
     - cron: "17,47 * * * *"
@@ -63,5 +63,5 @@ jobs:
           python scripts/backfill_extra_gazettes.py
           --from-year "${{ inputs.from_year || '2026' }}"
           --to-year "${{ inputs.to_year || '2026' }}"
-          --pages-per-run "${{ inputs.pages_per_run || '10' }}"
+          --pages-per-run "${{ inputs.pages_per_run || '5' }}"
           --minimum-download-interval-seconds "${{ inputs.minimum_download_interval_seconds || '0.25' }}"
