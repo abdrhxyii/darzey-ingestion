@@ -60,9 +60,9 @@ python -m pytest
 
 ## Current automation
 
-The scheduled workflow checks the current official Extra Gazette listing every
-six hours. The manual backfill workflow accepts an archive-year range and is
-used to preserve the historical archive in safe, restartable batches.
+The scheduled workflow checks the current official Extra Gazette and Acts
+listings every six hours. Each document type has a separate manual backfill
+workflow for safe, restartable archive batches.
 
 ## Extra Gazette backfill
 
@@ -73,4 +73,13 @@ safely preserves only R2 objects that do not already exist.
 
 ```powershell
 python scripts/backfill_extra_gazettes.py --from-year 2024 --to-year 2024
+```
+
+## Acts backfill
+
+The separate **Backfill Acts** workflow uses the official public Acts page and
+the same immutable PDF + manifest contract. For example:
+
+```powershell
+python scripts/backfill_acts.py --from-year 2024 --to-year 2024
 ```

@@ -13,6 +13,8 @@ src/legalai_ingestion/
   connectors/
     documents_gov_lk.py         # Current documents.gov.lk Extra Gazette listing
     documents_gov_lk_archive.py # Historical Extra Gazette archive by year
+    documents_gov_lk_acts.py    # Current documents.gov.lk Acts listing
+    documents_gov_lk_acts_archive.py # Historical Acts archive by year
     <source>.py                 # One future official-source adapter
 
   storage/
@@ -23,16 +25,20 @@ src/legalai_ingestion/
 scripts/
   ingest_extra_gazettes.py      # Recurring current-listing sync
   backfill_extra_gazettes.py    # Manual historical archive backfill
+  ingest_acts.py                # Recurring current Acts sync
+  backfill_acts.py              # Manual historical Acts backfill
 
 .github/workflows/
   validate-and-check-r2.yml     # Tests and six-hour current-listing sync
   backfill-extra-gazettes.yml   # Manual, year-range historical backfill
+  backfill-acts.yml             # Manual, year-range Acts backfill
 
 docs/
   repository-structure.md
   r2-storage-layout.md
   sources/
     documents-gov-lk-extra-gazettes.md
+    documents-gov-lk-acts.md
 
 tests/
   test_ingestion_core.py
