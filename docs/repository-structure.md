@@ -17,6 +17,8 @@ src/legalai_ingestion/
     documents_gov_lk_acts_archive.py # Historical Acts archive by year
     documents_gov_lk_bills.py   # Current documents.gov.lk Bills listing
     documents_gov_lk_bills_archive.py # Historical Bills archive by year
+    documents_gov_lk_gazettes.py # Gazette issue-date and part/section discovery
+    documents_gov_lk_gazettes_archive.py # Historical Gazette date-list archive
     <source>.py                 # One future official-source adapter
 
   storage/
@@ -31,12 +33,15 @@ scripts/
   backfill_acts.py              # Manual historical Acts backfill
   ingest_bills.py               # Recurring current Bills sync
   backfill_bills.py             # Manual historical Bills backfill
+  ingest_gazettes.py            # Recurring current Gazette sync
+  backfill_gazettes.py          # Manual historical Gazette backfill
 
 .github/workflows/
   validate-and-check-r2.yml     # Tests and six-hour current-listing sync
   backfill-extra-gazettes.yml   # Manual, year-range historical backfill
   backfill-acts.yml             # Manual, year-range Acts backfill
   backfill-bills.yml            # Manual, year-range Bills backfill
+  backfill-gazettes.yml         # Manual, year-range Gazette backfill
 
 docs/
   repository-structure.md
@@ -45,6 +50,7 @@ docs/
     documents-gov-lk-extra-gazettes.md
     documents-gov-lk-acts.md
     documents-gov-lk-bills.md
+    documents-gov-lk-gazettes.md
 
 tests/
   test_ingestion_core.py

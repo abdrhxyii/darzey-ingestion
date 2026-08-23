@@ -1,0 +1,30 @@
+name: Backfill Gazettes
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_year: {description: First official archive year, required: true, type: string}
+      to_year: {description: Last official archive year, required: true, type: string}
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    name: Preserve Gazette archive
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: python -m pip install --upgrade pip && python -m pip install -e ".[production,browser]"
+      - run: python -m playwright install --with-deps chromium
+      - name: Verify public Gazette date list
+        run: python -c "from legalai_ingestion.connectors.documents_gov_lk_gazettes import discover_gazettes; assert discover_gazettes()"
+      - name: Backfill selected archive years
+        env:
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: python scripts/backfill_gazettes.py --from-year "${{ inputs.from_year }}" --to-year "${{ inputs.to_year }}"
