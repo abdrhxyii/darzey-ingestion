@@ -6,6 +6,10 @@ from legalai_ingestion.models import DiscoveredDocument, StoredDocument
 from legalai_ingestion.object_keys import build_manifest_key, build_pdf_key
 from legalai_ingestion.pipeline import store_documents
 from legalai_ingestion.storage.local import LocalObjectStore
+from legalai_ingestion.backfill_state import (
+    load_extra_gazette_checkpoint,
+    save_extra_gazette_checkpoint,
+)
 from legalai_ingestion.connectors.documents_gov_lk import _initial_items
 from legalai_ingestion.connectors.documents_gov_lk_acts import documents_from_act_items
 from legalai_ingestion.connectors.documents_gov_lk_bills import documents_from_bill_items
@@ -100,6 +104,24 @@ def test_local_store_refuses_overwrite_of_changed_bytes(tmp_path):
         pass
     else:
         raise AssertionError("changed content must not overwrite an existing object")
+
+
+def test_extra_gazette_checkpoint_resumes_at_next_completed_page(tmp_path):
+    store = LocalObjectStore(tmp_path)
+
+    checkpoint = load_extra_gazette_checkpoint(store, from_year=2026, to_year=2026)
+    assert checkpoint.next_page == 1
+    assert checkpoint.status == "in_progress"
+
+    save_extra_gazette_checkpoint(store, checkpoint.with_progress(next_page=6))
+    resumed = load_extra_gazette_checkpoint(store, from_year=2026, to_year=2026)
+    assert resumed.next_page == 6
+    assert resumed.status == "in_progress"
+
+    save_extra_gazette_checkpoint(store, resumed.with_progress(next_page=97, completed=True))
+    completed = load_extra_gazette_checkpoint(store, from_year=2026, to_year=2026)
+    assert completed.next_page == 97
+    assert completed.status == "completed"
 
 
 def test_extra_gazette_payload_preserves_languages_and_public_proxy():

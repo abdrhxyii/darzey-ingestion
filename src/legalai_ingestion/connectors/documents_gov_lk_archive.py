@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Iterator
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from ..models import DiscoveredDocument
 from .documents_gov_lk import EXTRA_GAZETTES_URL, documents_from_extra_gazette_items
@@ -159,6 +159,14 @@ def _wait_for_captured_page_items(
 DocumentMapper = Callable[[list[dict[str, object]]], list[DiscoveredDocument]]
 
 
+@dataclass(frozen=True)
+class DiscoveredDocumentPage:
+    """One official listing page after its documents have been year-filtered."""
+
+    page_number: int
+    documents: list[DiscoveredDocument]
+
+
 def discover_documents_for_year_range(
     from_year: int,
     to_year: int,
@@ -256,3 +264,82 @@ def discover_extra_gazettes_for_year_range(
         page_size=page_size,
         max_pages=max_pages,
     )
+
+
+def discover_extra_gazette_pages_for_year_range(
+    from_year: int,
+    to_year: int,
+    *,
+    start_page: int = 1,
+    max_pages: int | None = None,
+) -> Iterator[DiscoveredDocumentPage]:
+    """Yield bounded official Extra Gazette listing pages for a resumable run.
+
+    ``start_page`` is an official page number, not a document offset. Pages
+    before it are only navigated through; their PDFs are never downloaded.
+    """
+
+    if from_year > to_year:
+        raise ValueError("from_year must be less than or equal to to_year")
+    if start_page < 1:
+        raise ValueError("start_page must be positive")
+    if max_pages is not None and max_pages < 1:
+        raise ValueError("max_pages must be positive when provided")
+
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as error:  # pragma: no cover - exercised in GitHub workflow
+        raise RuntimeError(
+            'Historical Extra Gazette backfill requires the browser dependency. Install it with: pip install -e ".[browser]"'
+        ) from error
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            page.add_init_script(_CAPTURE_PAGE_RESPONSES_SCRIPT)
+            page.goto(EXTRA_GAZETTES_URL, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
+            page.get_by_role("grid", name="Extra Gazettes").wait_for(timeout=PAGE_LOAD_TIMEOUT_MS)
+
+            current_page = 1
+            items = _wait_for_captured_page_items(page, current_page)
+            while current_page < start_page:
+                next_page = page.get_by_role("button", name="next page button", exact=True).first
+                if not next_page.is_enabled():
+                    return
+                expected_page = current_page + 1
+                next_page.click()
+                items = _wait_for_captured_page_items(page, expected_page)
+                current_page = expected_page
+
+            yielded_pages = 0
+            while True:
+                mapped_documents = documents_from_extra_gazette_items(items, page_url=EXTRA_GAZETTES_URL)
+                years = [
+                    int(document.published_date[:4])
+                    for document in mapped_documents
+                    if document.published_date
+                ]
+                documents = [
+                    replace(document, archive_year=str(int(document.published_date[:4])))
+                    for document in mapped_documents
+                    if document.published_date
+                    and from_year <= int(document.published_date[:4]) <= to_year
+                ]
+                yield DiscoveredDocumentPage(page_number=current_page, documents=documents)
+                yielded_pages += 1
+
+                if max_pages is not None and yielded_pages >= max_pages:
+                    return
+                if years and max(years) < from_year:
+                    return
+
+                next_page = page.get_by_role("button", name="next page button", exact=True).first
+                if not next_page.is_enabled():
+                    return
+                expected_page = current_page + 1
+                next_page.click()
+                items = _wait_for_captured_page_items(page, expected_page)
+                current_page = expected_page
+        finally:
+            browser.close()

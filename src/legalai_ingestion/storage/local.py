@@ -22,3 +22,15 @@ class LocalObjectStore:
 
     def exists(self, key: str) -> bool:
         return (self.root / key).exists()
+
+    def get(self, key: str) -> bytes | None:
+        target = self.root / key
+        return target.read_bytes() if target.exists() else None
+
+    def replace(self, key: str, body: bytes, *, content_type: str, metadata: dict[str, str]) -> None:
+        """Write mutable operational state used by resumable backfills."""
+
+        del content_type, metadata
+        target = self.root / key
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(body)

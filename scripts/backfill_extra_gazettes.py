@@ -1,8 +1,4 @@
-"""Backfill official Extra Gazette archive years into private R2 storage.
-
-This command is intentionally separate from the recurring latest-document sync.
-Run small year ranges so interrupted work can be safely re-run.
-"""
+"""Run one resumable, page-bounded Extra Gazette archive batch into R2."""
 
 from __future__ import annotations
 
@@ -11,13 +7,17 @@ import os
 
 from legalai_ingestion.connectors.documents_gov_lk import download_pdf
 from legalai_ingestion.connectors.documents_gov_lk_archive import (
-    discover_extra_gazettes_for_year_range,
+    discover_extra_gazette_pages_for_year_range,
 )
-from legalai_ingestion.pipeline import store_documents
+from legalai_ingestion.backfill_state import (
+    load_extra_gazette_checkpoint,
+    save_extra_gazette_checkpoint,
+)
+from legalai_ingestion.pipeline import IngestionSummary, store_documents
 from legalai_ingestion.storage.r2 import R2ObjectStore
 
 
-PIPELINE_VERSION = "0.3.0"
+PIPELINE_VERSION = "0.4.0"
 
 
 def required(name: str) -> str:
@@ -32,6 +32,12 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--from-year", type=int, required=True)
     parser.add_argument("--to-year", type=int, required=True)
     parser.add_argument(
+        "--pages-per-run",
+        type=int,
+        default=5,
+        help="Maximum official listing pages to preserve in this run (default: 5).",
+    )
+    parser.add_argument(
         "--minimum-download-interval-seconds",
         type=float,
         default=0.25,
@@ -42,6 +48,8 @@ def parse_arguments() -> argparse.Namespace:
         parser.error("--from-year must be less than or equal to --to-year")
     if arguments.minimum_download_interval_seconds < 0:
         parser.error("--minimum-download-interval-seconds cannot be negative")
+    if arguments.pages_per_run < 1:
+        parser.error("--pages-per-run must be positive")
     return arguments
 
 
@@ -53,17 +61,54 @@ def main() -> int:
         access_key_id=required("R2_ACCESS_KEY_ID"),
         secret_access_key=required("R2_SECRET_ACCESS_KEY"),
     )
-    print(f"Backfilling Extra Gazettes published from {arguments.from_year} to {arguments.to_year}...")
-    total = store_documents(
-        discover_extra_gazettes_for_year_range(arguments.from_year, arguments.to_year),
-        store=store,
-        download_pdf=download_pdf,
-        pipeline_version=PIPELINE_VERSION,
-        minimum_download_interval_seconds=arguments.minimum_download_interval_seconds,
+    checkpoint = load_extra_gazette_checkpoint(
+        store, from_year=arguments.from_year, to_year=arguments.to_year
     )
+    if checkpoint.status == "completed":
+        print(
+            f"Extra Gazette backfill {arguments.from_year}-{arguments.to_year} is already complete "
+            f"(next page: {checkpoint.next_page})."
+        )
+        return 0
 
     print(
-        f"Extra Gazette backfill complete: {total.checked} checked; {total.pdfs_uploaded} PDFs "
+        f"Backfilling Extra Gazettes published from {arguments.from_year} to {arguments.to_year}, "
+        f"starting at official page {checkpoint.next_page}; maximum {arguments.pages_per_run} pages."
+    )
+    total = IngestionSummary()
+    pages_processed = 0
+    for discovered_page in discover_extra_gazette_pages_for_year_range(
+        arguments.from_year,
+        arguments.to_year,
+        start_page=checkpoint.next_page,
+        max_pages=arguments.pages_per_run,
+    ):
+        page_summary = store_documents(
+            discovered_page.documents,
+            store=store,
+            download_pdf=download_pdf,
+            pipeline_version=PIPELINE_VERSION,
+            minimum_download_interval_seconds=arguments.minimum_download_interval_seconds,
+        )
+        total.add(page_summary)
+        if page_summary.failures:
+            print(
+                f"Stopped at page {discovered_page.page_number}; the checkpoint remains at "
+                f"page {checkpoint.next_page} so the page can be retried safely."
+            )
+            break
+        checkpoint = checkpoint.with_progress(next_page=discovered_page.page_number + 1)
+        save_extra_gazette_checkpoint(store, checkpoint)
+        pages_processed += 1
+        print(f"Checkpoint saved: next official page is {checkpoint.next_page}.")
+
+    if total.failures == 0 and pages_processed < arguments.pages_per_run:
+        checkpoint = checkpoint.with_progress(next_page=checkpoint.next_page, completed=True)
+        save_extra_gazette_checkpoint(store, checkpoint)
+        print(f"Extra Gazette backfill {arguments.from_year}-{arguments.to_year} is complete.")
+
+    print(
+        f"Extra Gazette batch complete: {total.checked} checked; {total.pdfs_uploaded} PDFs "
         f"uploaded; {total.manifests_uploaded} manifests uploaded; {total.failures} failures."
     )
     return 1 if total.failures else 0

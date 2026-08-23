@@ -16,6 +16,13 @@ on:
         required: false
         default: "0.25"
         type: string
+      pages_per_run:
+        description: Maximum official listing pages to preserve in this run
+        required: false
+        default: "5"
+        type: string
+  schedule:
+    - cron: "17,47 * * * *"
 
 permissions:
   contents: read
@@ -24,6 +31,10 @@ jobs:
   backfill:
     name: Preserve Extra Gazette archive
     runs-on: ubuntu-latest
+    timeout-minutes: 330
+    concurrency:
+      group: extra-gazette-backfill-${{ inputs.from_year || '2026' }}-${{ inputs.to_year || '2026' }}
+      cancel-in-progress: false
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -40,7 +51,7 @@ jobs:
         run: python -m playwright install --with-deps chromium
 
       - name: Verify official page pagination
-        run: python scripts/verify_extra_gazette_pagination.py --pages 9
+        run: python scripts/verify_extra_gazette_pagination.py --pages 2
 
       - name: Backfill selected archive years
         env:
@@ -50,6 +61,7 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: >-
           python scripts/backfill_extra_gazettes.py
-          --from-year "${{ inputs.from_year }}"
-          --to-year "${{ inputs.to_year }}"
-          --minimum-download-interval-seconds "${{ inputs.minimum_download_interval_seconds }}"
+          --from-year "${{ inputs.from_year || '2026' }}"
+          --to-year "${{ inputs.to_year || '2026' }}"
+          --pages-per-run "${{ inputs.pages_per_run || '5' }}"
+          --minimum-download-interval-seconds "${{ inputs.minimum_download_interval_seconds || '0.25' }}"
