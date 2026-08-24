@@ -28,7 +28,10 @@ _CAPTURE_PAGE_RESPONSES_SCRIPT = """
     const response = await originalFetch.call(this, input, init);
     try {
       const url = typeof input === "string" ? input : input.url;
-      const body = init && typeof init.body === "string" ? init.body : null;
+      let body = init && typeof init.body === "string" ? init.body : null;
+      if (!body && input instanceof Request) {
+        body = await input.clone().text();
+      }
       const text = await response.clone().text();
       window.__legalaiExtraGazetteResponses.push({ url, body, status: response.status, text });
     } catch (_) {
@@ -61,6 +64,12 @@ _CAPTURE_PAGE_RESPONSES_SCRIPT = """
   };
 })();
 """
+
+_NEXT_RSC_PUSH_PATTERN = re.compile(r"self\.__next_f\.push\((\[1,.*?\])\)</script>", re.S)
+
+
+class OfficialSourceUnavailable(RuntimeError):
+    """The official site received a request but its backing database is unavailable."""
 
 
 def _items_from_server_action(response_body: str) -> list[dict[str, object]]:
@@ -95,6 +104,41 @@ def _items_from_server_action(response_body: str) -> list[dict[str, object]]:
     raise ValueError("Official Extra Gazette page returned no record data")
 
 
+def _initial_items_from_page_html(page_html: str) -> list[dict[str, object]]:
+    """Read the first listing page embedded in the official HTML response.
+
+    Acts and Bills are server-rendered with an ``initialData.items`` payload.
+    There is therefore no browser request for page one to intercept reliably.
+    """
+
+    decoder = json.JSONDecoder()
+    for match in _NEXT_RSC_PUSH_PATTERN.finditer(page_html):
+        try:
+            record = json.loads(match.group(1))
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, list) or len(record) != 2 or not isinstance(record[1], str):
+            continue
+        payload = record[1]
+        marker = '"initialData":'
+        position = payload.find(marker)
+        if position < 0:
+            continue
+        start = payload.find("{", position + len(marker))
+        if start < 0:
+            continue
+        try:
+            initial_data, _ = decoder.raw_decode(payload, start)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(initial_data, dict):
+            continue
+        items = initial_data.get("items")
+        if isinstance(items, list):
+            return [item for item in items if isinstance(item, dict)]
+    raise ValueError("Official page returned no embedded initial record data")
+
+
 def _record_items_from_payload(payload: object) -> list[dict[str, object]] | None:
     """Return the table rows when a decoded RSC payload contains them."""
 
@@ -104,6 +148,16 @@ def _record_items_from_payload(payload: object) -> list[dict[str, object]] | Non
     if not isinstance(items, list):
         return None
     return [item for item in items if isinstance(item, dict)]
+
+
+def _raise_if_source_unavailable(response_body: str) -> None:
+    """Expose official API outages immediately instead of waiting for a false timeout."""
+
+    if "database system is not yet accepting connections" not in response_body:
+        return
+    raise OfficialSourceUnavailable(
+        "Official documents.gov.lk database is temporarily unavailable; retry later."
+    )
 
 
 def _captured_page_responses(page: object, expected_page: int) -> list[dict[str, object]]:
@@ -138,6 +192,7 @@ def _wait_for_captured_page_items(
             if response_body in examined:
                 continue
             examined.add(response_body)
+            _raise_if_source_unavailable(response_body)
             try:
                 return _items_from_server_action(response_body)
             except ValueError:
@@ -366,7 +421,10 @@ def discover_document_pages_for_year_range(
             page.goto(page_url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
             page.get_by_role("grid", name=grid_name).wait_for(timeout=PAGE_LOAD_TIMEOUT_MS)
             current_page = 1
-            items = _wait_for_captured_page_items(page, current_page, document_label=document_label)
+            # The initial listing page is server-rendered, so it is available in
+            # the HTML response but does not always trigger a browser fetch.
+            # Subsequent pagination pages still use the captured server action.
+            items = _initial_items_from_page_html(page.content())
             while current_page < start_page:
                 next_button = page.get_by_role("button", name="next page button", exact=True).first
                 if not next_button.is_enabled():
