@@ -44,7 +44,6 @@ def discover_gazettes_for_year_range(
             page = browser.new_page()
             page.goto(GAZETTES_URL, wait_until="domcontentloaded", timeout=60_000)
             current_page = 1
-            previous_first_date: str | None = None
             while True:
                 page.wait_for_timeout(500)
                 issue_dates = _visible_dates(page)
@@ -62,12 +61,12 @@ def discover_gazettes_for_year_range(
                 next_page = page.get_by_role("button", name="next page button", exact=True).first
                 if not next_page.is_enabled():
                     return
-                previous_first_date = issue_dates[0]
+                previous_dates = issue_dates
                 next_page.click()
                 for _ in range(120):
                     page.wait_for_timeout(500)
                     updated_dates = _visible_dates(page)
-                    if updated_dates and updated_dates[0] != previous_first_date:
+                    if updated_dates and updated_dates != previous_dates:
                         break
                 else:
                     raise TimeoutError("Official Gazette date page did not advance")
@@ -90,7 +89,6 @@ def discover_gazette_pages_for_year_range(from_year: int, to_year: int, *, start
             page = browser.new_page()
             page.goto(GAZETTES_URL, wait_until="domcontentloaded", timeout=60_000)
             current_page = 1
-            previous_first_date: str | None = None
             while True:
                 page.wait_for_timeout(500)
                 dates = _visible_dates(page)
@@ -111,12 +109,12 @@ def discover_gazette_pages_for_year_range(from_year: int, to_year: int, *, start
                 next_button = page.get_by_role("button", name="next page button", exact=True).first
                 if not next_button.is_enabled():
                     return
-                previous_first_date = dates[0]
+                previous_dates = dates
                 next_button.click()
                 for _ in range(120):
                     page.wait_for_timeout(500)
                     updated_dates = _visible_dates(page)
-                    if updated_dates and updated_dates[0] != previous_first_date:
+                    if updated_dates and updated_dates != previous_dates:
                         break
                 else:
                     raise TimeoutError("Official Gazette date page did not advance")
