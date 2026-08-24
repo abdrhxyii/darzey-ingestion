@@ -25,13 +25,17 @@ _CAPTURE_PAGE_RESPONSES_SCRIPT = """
   const originalFetch = window.fetch;
   window.__legalaiExtraGazetteResponses = [];
   window.fetch = async function(input, init) {
+    let body = init && typeof init.body === "string" ? init.body : null;
+    if (!body && input instanceof Request) {
+      try {
+        body = await input.clone().text();
+      } catch (_) {
+        // The request remains usable even when its body cannot be inspected.
+      }
+    }
     const response = await originalFetch.call(this, input, init);
     try {
       const url = typeof input === "string" ? input : input.url;
-      let body = init && typeof init.body === "string" ? init.body : null;
-      if (!body && input instanceof Request) {
-        body = await input.clone().text();
-      }
       const text = await response.clone().text();
       window.__legalaiExtraGazetteResponses.push({ url, body, status: response.status, text });
     } catch (_) {
