@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 330
     concurrency:
-      group: "general-forms-backfill-${{ inputs.from_year || '2026' }}-${{ inputs.to_year || '2026' }}"
+      group: "general-forms-backfill-${{ inputs.from_year || '1900' }}-${{ inputs.to_year || '2025' }}"
       cancel-in-progress: false
     env:
       R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
@@ -23,4 +23,4 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
       - run: python -m pip install --upgrade pip && python -m pip install -e ".[production,browser]" && python -m playwright install --with-deps chromium
-      - run: python scripts/backfill_resumable_documents_gov_lk.py --document-type general-form --from-year "${{ inputs.from_year || '2026' }}" --to-year "${{ inputs.to_year || '2026' }}"
+      - run: python scripts/backfill_resumable_documents_gov_lk.py --document-type general-form --from-year "${{ inputs.from_year || '1900' }}" --to-year "${{ inputs.to_year || '2025' }}"
