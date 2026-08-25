@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import time
 from collections.abc import Iterable
 from datetime import date, datetime
-from urllib.parse import quote
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote, urlencode
+from urllib.request import Request, urlopen
 
 from ..models import DiscoveredDocument
 from .documents_gov_lk import _get, normalise_language
@@ -14,6 +18,10 @@ from .documents_gov_lk import _get, normalise_language
 
 GAZETTES_URL = "https://documents.gov.lk/web/gazettes"
 GAZETTE_ISSUE_URL = "https://documents.gov.lk/web/Gazette?date={issue_date}"
+GAZETTE_API_BASE_URL = os.environ.get(
+    "GAZETTE_API_BASE_URL",
+    "http://203.143.21.148:4500/website-data",
+).rstrip("/")
 
 
 def _rsc_strings(page_html: str) -> Iterable[str]:
@@ -58,6 +66,52 @@ def listed_gazette_dates(page_html: str) -> list[str]:
             if isinstance(value, str)
         ]
     raise ValueError("Official Gazette date page returned no issue dates")
+
+
+def _gazette_dates_api_url(*, page: int, limit: int) -> str:
+    return f"{GAZETTE_API_BASE_URL}/gazette/get-all-gazette-dates?{urlencode({'limit': limit, 'page': page})}"
+
+
+def _decode_gazette_dates_response(payload: bytes) -> tuple[list[str], int]:
+    try:
+        value = json.loads(payload)
+    except json.JSONDecodeError as error:
+        raise ValueError("Gazette date API returned invalid JSON") from error
+    if not isinstance(value, dict):
+        raise ValueError("Gazette date API returned an unexpected payload")
+    raw_dates = value.get("dates")
+    if not isinstance(raw_dates, list):
+        raise ValueError("Gazette date API returned no dates")
+    dates = [
+        datetime.fromisoformat(item.replace("Z", "+00:00")).date().isoformat()
+        for item in raw_dates
+        if isinstance(item, str)
+    ]
+    total = value.get("total")
+    if not isinstance(total, int):
+        total = len(dates)
+    return dates, total
+
+
+def fetch_gazette_date_page(
+    page: int, *, limit: int = 100, attempts: int = 6, retry_delay_seconds: float = 5
+) -> tuple[list[str], int]:
+    """Fetch one date page from the official Gazette API with transient retries."""
+
+    if page < 1 or limit < 1 or attempts < 1:
+        raise ValueError("page, limit, and attempts must be positive")
+    url = _gazette_dates_api_url(page=page, limit=limit)
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            request = Request(url, headers={"User-Agent": "LegalAI-ingestion/0.1", "Accept": "application/json"})
+            with urlopen(request, timeout=60) as response:
+                return _decode_gazette_dates_response(response.read())
+        except (HTTPError, URLError, TimeoutError, ValueError) as error:
+            last_error = error
+            if attempt + 1 < attempts:
+                time.sleep(retry_delay_seconds * (attempt + 1))
+    raise RuntimeError(f"Gazette date API unavailable after {attempts} attempts: {url}") from last_error
 
 
 def _pdf_entries(value: object) -> Iterable[dict[str, object]]:
