@@ -74,29 +74,38 @@ def _visible_dates(page: object) -> list[str]:
 def _next_date_page(
     page: object,
     previous_dates: list[str],
-    captured_responses: list[str],
 ) -> list[str]:
-    captured_responses.clear()
     next_button = page.get_by_role("button", name="next page button", exact=True).first
     if not next_button.is_enabled():
         return []
-    # The control is a React-Aria <li role="button">. Use a real pointer
-    # event, matching the interaction that works on the public page.
-    box = next_button.bounding_box()
-    if box is None:
-        raise RuntimeError("Official Gazette next-page control is not visible")
-    page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-    for _ in range(PAGE_LOAD_TIMEOUT_MS // 500):
-        visible_dates = _visible_dates(page)
-        if visible_dates and visible_dates != previous_dates:
-            return visible_dates
-        for response_body in captured_responses:
-            _raise_if_source_unavailable(response_body)
-            dates = _dates_from_server_action(response_body)
-            if dates and dates != previous_dates:
-                return dates
-        page.wait_for_timeout(500)
-    raise TimeoutError("Official Gazette date page did not advance")
+    try:
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+    except ImportError as error:  # pragma: no cover
+        raise RuntimeError("Gazette pagination requires Playwright") from error
+
+    try:
+        # The Gazette control is a React-Aria <li role="button">. Wait for the
+        # streamed Next server-action response produced by the real control;
+        # reading it from a response event is too early for streamed bodies.
+        with page.expect_response(
+            lambda response: (
+                response.request.method == "POST"
+                and response.url.rstrip("/") == GAZETTES_URL.rstrip("/")
+                and response.headers.get("content-type", "").startswith("text/x-component")
+            ),
+            timeout=PAGE_LOAD_TIMEOUT_MS,
+        ) as response_info:
+            next_button.click(timeout=PAGE_LOAD_TIMEOUT_MS)
+        response = response_info.value
+        response.finished()
+        response_body = response.text()
+        _raise_if_source_unavailable(response_body)
+        dates = _dates_from_server_action(response_body)
+        if dates and dates != previous_dates:
+            return dates
+        raise RuntimeError("Official Gazette pagination response contained no new dates")
+    except PlaywrightTimeoutError as error:
+        raise TimeoutError("Official Gazette date page did not return its server response") from error
 
 
 def _browser_pages(start_page: int = 1) -> Iterator[tuple[int, list[str]]]:
@@ -108,31 +117,17 @@ def _browser_pages(start_page: int = 1) -> Iterator[tuple[int, list[str]]]:
         browser = playwright.chromium.launch(headless=True)
         try:
             page = browser.new_page()
-            captured_responses: list[str] = []
-
-            def capture_response(response: object) -> None:
-                request = response.request
-                if request.method != "POST" or response.url != GAZETTES_URL:
-                    return
-                try:
-                    body = response.text()
-                except Exception:
-                    return
-                if body:
-                    captured_responses.append(body)
-
-            page.on("response", capture_response)
             page.goto(GAZETTES_URL, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
             dates = _initial_dates_from_page_html(page.content())
             current_page = 1
             while current_page < start_page:
-                dates = _next_date_page(page, dates, captured_responses)
+                dates = _next_date_page(page, dates)
                 if not dates:
                     return
                 current_page += 1
             while dates:
                 yield current_page, dates
-                dates = _next_date_page(page, dates, captured_responses)
+                dates = _next_date_page(page, dates)
                 if not dates:
                     return
                 current_page += 1
