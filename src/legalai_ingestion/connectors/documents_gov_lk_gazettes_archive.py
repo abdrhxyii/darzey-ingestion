@@ -12,7 +12,6 @@ from ..models import DiscoveredDocument
 from .documents_gov_lk_archive import (
     DiscoveredDocumentPage,
     PAGE_LOAD_TIMEOUT_MS,
-    _CAPTURE_PAGE_RESPONSES_SCRIPT,
     _raise_if_source_unavailable,
 )
 from .documents_gov_lk_gazettes import GAZETTES_URL, discover_gazette_issue, listed_gazette_dates
@@ -72,8 +71,12 @@ def _visible_dates(page: object) -> list[str]:
     return dates
 
 
-def _next_date_page(page: object, previous_dates: list[str]) -> list[str]:
-    page.evaluate("window.__legalaiExtraGazetteResponses = []")
+def _next_date_page(
+    page: object,
+    previous_dates: list[str],
+    captured_responses: list[str],
+) -> list[str]:
+    captured_responses.clear()
     next_button = page.get_by_role("button", name="next page button", exact=True).first
     if not next_button.is_enabled():
         return []
@@ -87,10 +90,7 @@ def _next_date_page(page: object, previous_dates: list[str]) -> list[str]:
         visible_dates = _visible_dates(page)
         if visible_dates and visible_dates != previous_dates:
             return visible_dates
-        captures = page.evaluate(
-            """() => (window.__legalaiExtraGazetteResponses || []).map(({text}) => text).filter(Boolean)"""
-        )
-        for response_body in captures:
+        for response_body in captured_responses:
             _raise_if_source_unavailable(response_body)
             dates = _dates_from_server_action(response_body)
             if dates and dates != previous_dates:
@@ -108,18 +108,31 @@ def _browser_pages(start_page: int = 1) -> Iterator[tuple[int, list[str]]]:
         browser = playwright.chromium.launch(headless=True)
         try:
             page = browser.new_page()
-            page.add_init_script(_CAPTURE_PAGE_RESPONSES_SCRIPT)
+            captured_responses: list[str] = []
+
+            def capture_response(response: object) -> None:
+                request = response.request
+                if request.method != "POST" or response.url != GAZETTES_URL:
+                    return
+                try:
+                    body = response.text()
+                except Exception:
+                    return
+                if body:
+                    captured_responses.append(body)
+
+            page.on("response", capture_response)
             page.goto(GAZETTES_URL, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
             dates = _initial_dates_from_page_html(page.content())
             current_page = 1
             while current_page < start_page:
-                dates = _next_date_page(page, dates)
+                dates = _next_date_page(page, dates, captured_responses)
                 if not dates:
                     return
                 current_page += 1
             while dates:
                 yield current_page, dates
-                dates = _next_date_page(page, dates)
+                dates = _next_date_page(page, dates, captured_responses)
                 if not dates:
                     return
                 current_page += 1
