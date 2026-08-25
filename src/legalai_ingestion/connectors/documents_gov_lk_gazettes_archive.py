@@ -77,7 +77,12 @@ def _next_date_page(page: object, previous_dates: list[str]) -> list[str]:
     next_button = page.get_by_role("button", name="next page button", exact=True).first
     if not next_button.is_enabled():
         return []
-    next_button.click()
+    # The control is a React-Aria <li role="button">. Use a real pointer
+    # event, matching the interaction that works on the public page.
+    box = next_button.bounding_box()
+    if box is None:
+        raise RuntimeError("Official Gazette next-page control is not visible")
+    page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
     for _ in range(PAGE_LOAD_TIMEOUT_MS // 500):
         visible_dates = _visible_dates(page)
         if visible_dates and visible_dates != previous_dates:
