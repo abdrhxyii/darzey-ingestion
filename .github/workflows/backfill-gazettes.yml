@@ -4,7 +4,6 @@ on:
     inputs:
       from_year: {required: true, type: string}
       to_year: {required: true, type: string}
-  schedule: [{cron: "32,2 * * * *"}]
 permissions: {contents: read}
 jobs:
   backfill:
