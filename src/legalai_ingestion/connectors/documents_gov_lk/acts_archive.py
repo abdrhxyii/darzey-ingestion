@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from ..models import DiscoveredDocument
-from .documents_gov_lk_archive import DiscoveredDocumentPage, discover_documents_for_year_range, discover_document_pages_for_year_range
-from .documents_gov_lk_acts import ACTS_URL, documents_from_act_items
+from ...models import DiscoveredDocument
+from .archive import DiscoveredDocumentPage, discover_documents_for_year_range, discover_document_pages_for_year_range
+from .acts import ACTS_URL, documents_from_act_items
 
 
 def discover_acts_for_year_range(

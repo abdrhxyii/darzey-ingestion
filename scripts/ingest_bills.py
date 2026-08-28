@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import os
 
-from legalai_ingestion.connectors.documents_gov_lk import download_pdf
-from legalai_ingestion.connectors.documents_gov_lk_bills import discover_bills
+from legalai_ingestion.connectors.documents_gov_lk.common import download_pdf
+from legalai_ingestion.connectors.documents_gov_lk.bills import discover_bills
 from legalai_ingestion.pipeline import store_documents
 from legalai_ingestion.storage.r2 import R2ObjectStore
 

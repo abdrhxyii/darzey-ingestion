@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from legalai_ingestion.connectors import documents_gov_lk_archive as archive
+from legalai_ingestion.connectors.documents_gov_lk import archive
 
 
 def test_server_action_response_extracts_official_records():

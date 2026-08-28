@@ -1,4 +1,4 @@
-"""Historical Extra Gazette discovery through the official public web page.
+"""Shared browser pagination helpers for documents.gov.lk connectors.
 
 The Government Printing site exposes its records through a server action behind
 ``/web/extra_gazettes``. The upstream API host configured in the page is
@@ -9,16 +9,28 @@ returned when its pagination controls are used.
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
 
-from ..models import DiscoveredDocument
-from .documents_gov_lk import EXTRA_GAZETTES_URL, documents_from_extra_gazette_items
+from ...models import DiscoveredDocument
+from .extra_gazettes import EXTRA_GAZETTES_URL, documents_from_extra_gazette_items
 
 
 DEFAULT_PAGE_SIZE = 10
-PAGE_LOAD_TIMEOUT_MS = 60_000
+PAGE_LOAD_TIMEOUT_MS = 180_000
+INITIAL_NAVIGATION_TIMEOUT_MS = 180_000
+
+
+def _launch_browser(playwright: object) -> object:
+    """Launch Chromium, optionally using an already-installed local browser."""
+
+    executable_path = os.environ.get("LEGALAI_BROWSER_EXECUTABLE", "").strip()
+    options = {"headless": True}
+    if executable_path:
+        options["executable_path"] = executable_path
+    return playwright.chromium.launch(**options)
 
 _CAPTURE_PAGE_RESPONSES_SCRIPT = """
 (() => {
@@ -215,6 +227,35 @@ def _wait_for_captured_page_items(
     )
 
 
+def _click_next_page_and_wait_for_request(
+    page: object, next_button: object, expected_page: int, page_url: str
+) -> None:
+    """Click pagination only when the official server-action request is observed."""
+
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+    numbered_page = page.get_by_role(
+        "button", name=f"pagination item {expected_page}", exact=True
+    ).first
+    click_target = numbered_page if numbered_page.count() else next_button
+
+    for attempt in range(3):
+        try:
+            with page.expect_response(
+                lambda response: response.url == page_url
+                and response.request.method == "POST",
+                timeout=15_000,
+            ):
+                click_target.click()
+            return
+        except PlaywrightTimeoutError:
+            if attempt == 2:
+                raise TimeoutError(
+                    f"Official page did not send a pagination request for page {expected_page}"
+                )
+            page.wait_for_timeout(2_000)
+
+
 DocumentMapper = Callable[[list[dict[str, object]]], list[DiscoveredDocument]]
 
 
@@ -255,7 +296,7 @@ def discover_documents_for_year_range(
         ) from error
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
+        browser = _launch_browser(playwright)
         try:
             page = browser.new_page()
             page.add_init_script(_CAPTURE_PAGE_RESPONSES_SCRIPT)
@@ -353,7 +394,7 @@ def discover_extra_gazette_pages_for_year_range(
         ) from error
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
+        browser = _launch_browser(playwright)
         try:
             page = browser.new_page()
             page.add_init_script(_CAPTURE_PAGE_RESPONSES_SCRIPT)
@@ -418,16 +459,20 @@ def discover_document_pages_for_year_range(
     except ImportError as error:  # pragma: no cover
         raise RuntimeError(f'Historical {document_label} backfill requires: pip install -e ".[browser]"') from error
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
+        browser = _launch_browser(playwright)
         try:
             page = browser.new_page()
             page.add_init_script(_CAPTURE_PAGE_RESPONSES_SCRIPT)
-            page.goto(page_url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
+            # This site can keep the document-load lifecycle open while its
+            # server-rendered page is already usable.  Waiting for commit and
+            # then waiting for the Bills grid avoids aborting on that lifecycle
+            # event before discovery can begin.
+            page.goto(page_url, wait_until="commit", timeout=INITIAL_NAVIGATION_TIMEOUT_MS)
             page.get_by_role("grid", name=grid_name).wait_for(timeout=PAGE_LOAD_TIMEOUT_MS)
-            # The table can be visible before the client-side pagination
-            # handlers are hydrated.  In that state a click is accepted by
-            # Playwright but emits no server-action request at all.
-            page.wait_for_load_state("networkidle", timeout=PAGE_LOAD_TIMEOUT_MS)
+            # The server-rendered grid can appear before React attaches the
+            # pagination action. Give hydration a brief settle window; the
+            # actual POST below remains the authoritative readiness check.
+            page.wait_for_timeout(5_000)
             current_page = 1
             # The initial listing page is server-rendered, so it is available in
             # the HTML response but does not always trigger a browser fetch.
@@ -438,7 +483,7 @@ def discover_document_pages_for_year_range(
                 if not next_button.is_enabled():
                     return
                 current_page += 1
-                next_button.click()
+                _click_next_page_and_wait_for_request(page, next_button, current_page, page_url)
                 items = _wait_for_captured_page_items(page, current_page, document_label=document_label)
             yielded = 0
             while True:
@@ -454,7 +499,7 @@ def discover_document_pages_for_year_range(
                 if not next_button.is_enabled():
                     return
                 current_page += 1
-                next_button.click()
+                _click_next_page_and_wait_for_request(page, next_button, current_page, page_url)
                 items = _wait_for_captured_page_items(page, current_page, document_label=document_label)
         finally:
             browser.close()
