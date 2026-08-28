@@ -58,16 +58,24 @@ R2_BUCKET
 python -m pytest
 ```
 
-## Active automation
+## Current operational focus
 
-Only Extra Gazettes are active. The scheduled workflow first checks for newly
-published Extra Gazettes, then preserves five historical listing pages per run
-and resumes from its R2 checkpoint.
+Bills are currently the active ingestion priority. Bills are discovered from
+the live official `https://documents.gov.lk/web/bills` page and their files are
+downloaded from the official `api/content-file-proxy` URLs returned by the
+site. The private `gvp-api:4500` service, legacy `/view/...` URLs, and third-
+party dataset snapshots are not used.
+
+The Bills browser waits for the client-side page to finish loading before
+using pagination. This is required because the table can be visible before
+the pagination handler is ready. The workflow remains resumable and accepts
+an optional `pages_per_run` input (default: 5).
 
 ## Resumable document backfills
 
-Acts, Bills, Gazettes, and General Forms each run in their own five-page
-workflow batch and keep a separate checkpoint in R2:
+The repository contains separate backfill workflows for Acts, Bills, Extra
+Gazettes, normal Gazettes, and General Forms. Each resumable backfill keeps a
+separate checkpoint in R2:
 
 ```text
 state/documents.gov.lk/act/backfills/<from-year>-<to-year>.json
@@ -79,13 +87,9 @@ state/documents.gov.lk/general-form/backfills/<from-year>-<to-year>.json
 The checkpoint records the next official page. It advances only after the
 preceding page has fully succeeded, so cancelled workflows resume safely.
 
-## Extra Gazette backfill
+For Bills, the checkpoint advances only after the preceding official listing
+page has fully succeeded. A failed page is retried on the next run; PDFs are
+not fetched until that page's records have been received.
 
-The **Backfill Extra Gazettes** workflow accepts a year range. It uses the
-official public Extra Gazette page, not the site's private API host. Each run
-saves a checkpoint after every fully preserved official page; reruns resume
-there and safely retain only R2 objects that do not already exist.
-
-```powershell
-python scripts/backfill_extra_gazettes.py --from-year 2024 --to-year 2024
-```
+No production ingestion uses the Hugging Face datasets. They are not treated
+as a source of truth because their historical PDF URLs can become stale.
