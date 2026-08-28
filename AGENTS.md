@@ -12,40 +12,52 @@ types under each website.
 
 ## Repository organization
 
-Keep source-specific behavior separate from shared ingestion behavior:
+The repository currently uses a flat connector naming convention. Keep this
+structure unless a deliberate migration is requested:
 
 ```text
 src/legalai_ingestion/
-├── core/                         # shared models, manifests, pipeline, state
-├── storage/                      # R2 and local storage adapters
-└── sources/
-    ├── <government-source>/
-    │   ├── common.py             # shared rules for this website
-    │   ├── acts.py               # Acts discovery and normalization
-    │   ├── bills.py              # Bills discovery and normalization
-    │   ├── gazettes.py           # Gazette discovery and normalization
-    │   └── forms.py              # Forms discovery and normalization
-    └── <another-source>/
-        └── ...
+├── models.py
+├── manifests.py
+├── object_keys.py
+├── pipeline.py
+├── backfill_state.py
+├── connectors/
+│   ├── documents_gov_lk.py                    # shared source helpers
+│   ├── documents_gov_lk_<type>.py             # current-page discovery
+│   ├── documents_gov_lk_<type>_archive.py     # historical/backfill discovery
+│   └── ...
+└── storage/
+    ├── r2.py
+    └── local.py
 ```
 
-The existing connector layout may be retained while the codebase is migrated.
-The same ownership rule applies: each source/document-type file owns only its
-website URLs, discovery method, pagination, response parsing, metadata mapping,
-and official file URL construction.
+The `_archive.py` suffix means historical, paginated, or year-range backfill
+logic. It is an implementation pattern, not a separate storage area and not
+an indication that the code is obsolete.
+
+Each `<type>.py` and `<type>_archive.py` file owns only that source and
+document type's URLs, discovery method, pagination, response parsing, metadata
+mapping, and official file URL construction. Shared behavior remains in the
+common connector helpers, pipeline, state, and storage modules.
 
 Shared code owns downloading, PDF validation, hashing, R2 keys, manifests,
 checkpoints, retries, and common logging. Do not copy shared behavior into
 individual source connectors.
 
-Use matching organization for scripts, tests, and documentation:
+Use names matching the existing implementation for scripts, tests, and
+documentation:
 
 ```text
-scripts/<action>_<source>.py
-tests/connectors/<source>/test_<document-type>.py
-docs/source-contracts/<source>.md
-.github/workflows/<action>-<source>.yml
+scripts/<action>_resumable_documents_<source>.py
+tests/test_<source>_<area>.py
+docs/<source>-<area>.md
+.github/workflows/<action>-<document-type>.yml
 ```
+
+Do not create a second connector for behavior already covered by an existing
+`documents_gov_lk.py` helper or archive module. Add a small source-specific
+function and reuse the shared pipeline instead.
 
 ## Source-of-truth rules
 
