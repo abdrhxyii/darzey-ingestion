@@ -424,6 +424,10 @@ def discover_document_pages_for_year_range(
             page.add_init_script(_CAPTURE_PAGE_RESPONSES_SCRIPT)
             page.goto(page_url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
             page.get_by_role("grid", name=grid_name).wait_for(timeout=PAGE_LOAD_TIMEOUT_MS)
+            # The table can be visible before the client-side pagination
+            # handlers are hydrated.  In that state a click is accepted by
+            # Playwright but emits no server-action request at all.
+            page.wait_for_load_state("networkidle", timeout=PAGE_LOAD_TIMEOUT_MS)
             current_page = 1
             # The initial listing page is server-rendered, so it is available in
             # the HTML response but does not always trigger a browser fetch.
