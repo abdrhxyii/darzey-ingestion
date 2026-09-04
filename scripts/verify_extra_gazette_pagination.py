@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from legalai_ingestion.connectors.documents_gov_lk_archive import (
+from legalai_ingestion.connectors.documents_gov_lk.archive import (
     discover_extra_gazettes_for_year_range,
 )
 

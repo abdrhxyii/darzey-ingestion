@@ -12,8 +12,12 @@ types under each website.
 
 ## Repository organization
 
-The repository currently uses a flat connector naming convention. Keep this
-structure unless a deliberate migration is requested:
+Connectors are grouped by government website. The documents.gov.lk connector
+uses `connectors/documents_gov_lk/` with `common.py` for shared HTTP/PDF
+helpers, `archive.py` for shared pagination, and separate `acts.py`,
+`bills.py`, `extra_gazettes.py`, and `forms.py` modules. Matching `_archive.py`
+modules contain historical discovery for the types that need it. Normal
+Gazettes are intentionally removed from active ingestion.
 
 ```text
 src/legalai_ingestion/
@@ -37,9 +41,10 @@ logic. It is an implementation pattern, not a separate storage area and not
 an indication that the code is obsolete.
 
 Each `<type>.py` and `<type>_archive.py` file owns only that source and
-document type's URLs, discovery method, pagination, response parsing, metadata
-mapping, and official file URL construction. Shared behavior remains in the
-common connector helpers, pipeline, state, and storage modules.
+document type's URLs, discovery method, response parsing, metadata mapping,
+and official file URL construction. Shared pagination belongs in `archive.py`;
+shared HTTP, language normalization, PDF validation, pipeline, state, and
+storage behavior must not be duplicated in type modules.
 
 Shared code owns downloading, PDF validation, hashing, R2 keys, manifests,
 checkpoints, retries, and common logging. Do not copy shared behavior into
@@ -55,9 +60,9 @@ docs/<source>-<area>.md
 .github/workflows/<action>-<document-type>.yml
 ```
 
-Do not create a second connector for behavior already covered by an existing
-`documents_gov_lk.py` helper or archive module. Add a small source-specific
-function and reuse the shared pipeline instead.
+Do not create a second connector for behavior already covered by `common.py` or
+`archive.py`. Add a small source-specific function and reuse the shared
+pipeline instead.
 
 ## Source-of-truth rules
 

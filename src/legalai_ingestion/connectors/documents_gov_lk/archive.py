@@ -1,4 +1,4 @@
-"""Historical Extra Gazette discovery through the official public web page.
+"""Shared browser pagination helpers for documents.gov.lk connectors.
 
 The Government Printing site exposes its records through a server action behind
 ``/web/extra_gazettes``. The upstream API host configured in the page is
@@ -9,16 +9,28 @@ returned when its pagination controls are used.
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
 
-from ..models import DiscoveredDocument
-from .documents_gov_lk import EXTRA_GAZETTES_URL, documents_from_extra_gazette_items
+from ...models import DiscoveredDocument
+from .extra_gazettes import EXTRA_GAZETTES_URL, documents_from_extra_gazette_items
 
 
 DEFAULT_PAGE_SIZE = 10
-PAGE_LOAD_TIMEOUT_MS = 60_000
+PAGE_LOAD_TIMEOUT_MS = 180_000
+INITIAL_NAVIGATION_TIMEOUT_MS = 180_000
+
+
+def _launch_browser(playwright: object) -> object:
+    """Launch Chromium, optionally using an already-installed local browser."""
+
+    executable_path = os.environ.get("LEGALAI_BROWSER_EXECUTABLE", "").strip()
+    options = {"headless": True}
+    if executable_path:
+        options["executable_path"] = executable_path
+    return playwright.chromium.launch(**options)
 
 _CAPTURE_PAGE_RESPONSES_SCRIPT = """
 (() => {
@@ -37,7 +49,11 @@ _CAPTURE_PAGE_RESPONSES_SCRIPT = """
     try {
       const url = typeof input === "string" ? input : input.url;
       const text = await response.clone().text();
-      window.__legalaiExtraGazetteResponses.push({ url, body, status: response.status, text });
+      window.__legalaiExtraGazetteResponses.push({
+        method: (init && init.method) || (input instanceof Request ? input.method : "GET"),
+        url, body, headers: init && init.headers ? Object.fromEntries(new Headers(init.headers)) : {},
+        status: response.status, text
+      });
     } catch (_) {
       // Non-text responses do not participate in record pagination.
     }
@@ -55,10 +71,12 @@ _CAPTURE_PAGE_RESPONSES_SCRIPT = """
     this.addEventListener("loadend", () => {
       try {
         window.__legalaiExtraGazetteResponses.push({
+          method: this.__legalaiMethod,
           url: this.__legalaiUrl,
           body: typeof body === "string" ? body : null,
           status: this.status,
-          text: this.responseText,
+            headers: {},
+            text: this.responseText,
         });
       } catch (_) {
         // Binary responses do not participate in record pagination.
@@ -176,7 +194,7 @@ def _captured_page_responses(page: object, expected_page: int) -> list[dict[str,
               try { return JSON.parse(body)[0]?.page === expectedPage; }
               catch (_) { return false; }
             })()
-          ).map(({ url, status, text }) => ({ url, status, text })).filter(({ text }) => Boolean(text));
+          ).map(({ method, url, body, headers, status, text }) => ({ method, url, body, headers, status, text })).filter(({ text }) => Boolean(text));
         }""",
         expected_page,
     )
@@ -213,6 +231,102 @@ def _wait_for_captured_page_items(
     raise TimeoutError(
         f"Official {document_label} page did not return record data for page {expected_page}"
     )
+
+
+def _click_next_page_and_wait_for_request(
+    page: object, next_button: object, expected_page: int, page_url: str
+) -> None:
+    """Click pagination only when the official server-action request is observed."""
+
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+    numbered_page = page.get_by_role(
+        "button", name=f"pagination item {expected_page}", exact=True
+    ).first
+    click_target = numbered_page if numbered_page.count() else next_button
+
+    for attempt in range(3):
+        try:
+            with page.expect_response(
+                lambda response: response.url == page_url
+                and response.request.method == "POST",
+                timeout=15_000,
+            ):
+                click_target.click()
+            return
+        except PlaywrightTimeoutError:
+            if attempt == 2:
+                raise TimeoutError(
+                    f"Official page did not send a pagination request for page {expected_page}"
+                )
+            page.wait_for_timeout(2_000)
+
+
+def _replay_bills_page(
+    page: object, request_details: dict[str, object], page_number: int
+) -> list[dict[str, object]]:
+    """Replay the captured public Bills server-action request for a page."""
+
+    body = request_details.get("body")
+    if not isinstance(body, str):
+        raise RuntimeError("Bills pagination request had no replayable body")
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError as error:
+        raise RuntimeError("Bills pagination request body was not JSON") from error
+    if not isinstance(payload, list) or not payload or not isinstance(payload[0], dict):
+        raise RuntimeError("Bills pagination request had an unexpected body shape")
+    payload[0]["page"] = page_number
+    headers = request_details.get("headers")
+    if not isinstance(headers, dict):
+        headers = {}
+    headers = {str(key): str(value) for key, value in headers.items()
+               if str(key).lower() not in {"content-length", "host"}}
+    response = page.request.post(
+        str(request_details["url"]),
+        data=json.dumps(payload, separators=(",", ":")),
+        headers=headers,
+        timeout=PAGE_LOAD_TIMEOUT_MS,
+    )
+    text = response.text()
+    _raise_if_source_unavailable(text)
+    items = _items_from_server_action(text)
+    if not items:
+        raise RuntimeError(f"Bills page {page_number} returned no records")
+    return items
+
+
+def _capture_bills_protocol(page: object, next_button: object, page_url: str) -> tuple[dict[str, object], list[dict[str, object]]]:
+    """Capture one genuine Bills request, then make it reusable for replay."""
+
+    captured: list[object] = []
+    page.on("request", lambda request: captured.append(request)
+            if request.url == page_url and request.method == "POST" else None)
+    numbered_page = page.get_by_role("button", name="pagination item 2", exact=True).first
+    click_target = numbered_page if numbered_page.count() else next_button
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+    try:
+        with page.expect_request(
+            lambda request: request.url == page_url and request.method == "POST",
+            timeout=30_000,
+        ) as request_info:
+            click_target.click()
+        captured_request = request_info.value
+    except PlaywrightTimeoutError as error:
+        raise TimeoutError("Official Bills page did not emit the page-2 POST request") from error
+    for request in reversed(captured):
+        body = request.post_data
+        if body and '"page":2' in body:
+            details = {"url": request.url, "body": body, "headers": request.headers}
+            return details, _wait_for_captured_page_items(page, 2, document_label="Bills")
+    body = captured_request.post_data
+    if body and '"page":2' in body:
+        return {
+            "url": captured_request.url,
+            "body": body,
+            "headers": captured_request.headers,
+        }, _wait_for_captured_page_items(page, 2, document_label="Bills")
+    raise RuntimeError("Bills page-2 request was observed but its JSON body was not captured")
 
 
 DocumentMapper = Callable[[list[dict[str, object]]], list[DiscoveredDocument]]
@@ -255,7 +369,7 @@ def discover_documents_for_year_range(
         ) from error
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
+        browser = _launch_browser(playwright)
         try:
             page = browser.new_page()
             page.add_init_script(_CAPTURE_PAGE_RESPONSES_SCRIPT)
@@ -353,7 +467,7 @@ def discover_extra_gazette_pages_for_year_range(
         ) from error
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
+        browser = _launch_browser(playwright)
         try:
             page = browser.new_page()
             page.add_init_script(_CAPTURE_PAGE_RESPONSES_SCRIPT)
@@ -361,7 +475,7 @@ def discover_extra_gazette_pages_for_year_range(
             page.get_by_role("grid", name="Extra Gazettes").wait_for(timeout=PAGE_LOAD_TIMEOUT_MS)
 
             current_page = 1
-            items = _wait_for_captured_page_items(page, current_page)
+            items = _initial_items_from_page_html(page.content())
             while current_page < start_page:
                 next_page = page.get_by_role("button", name="next page button", exact=True).first
                 if not next_page.is_enabled():
@@ -418,28 +532,38 @@ def discover_document_pages_for_year_range(
     except ImportError as error:  # pragma: no cover
         raise RuntimeError(f'Historical {document_label} backfill requires: pip install -e ".[browser]"') from error
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
+        browser = _launch_browser(playwright)
         try:
             page = browser.new_page()
             page.add_init_script(_CAPTURE_PAGE_RESPONSES_SCRIPT)
-            page.goto(page_url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
+            # This site can keep the document-load lifecycle open while its
+            # server-rendered page is already usable.  Waiting for commit and
+            # then waiting for the Bills grid avoids aborting on that lifecycle
+            # event before discovery can begin.
+            page.goto(page_url, wait_until="commit", timeout=INITIAL_NAVIGATION_TIMEOUT_MS)
             page.get_by_role("grid", name=grid_name).wait_for(timeout=PAGE_LOAD_TIMEOUT_MS)
-            # The table can be visible before the client-side pagination
-            # handlers are hydrated.  In that state a click is accepted by
-            # Playwright but emits no server-action request at all.
-            page.wait_for_load_state("networkidle", timeout=PAGE_LOAD_TIMEOUT_MS)
+            # The server-rendered grid can appear before React attaches the
+            # pagination action. Give hydration a brief settle window; the
+            # actual POST below remains the authoritative readiness check.
+            page.wait_for_timeout(5_000)
             current_page = 1
             # The initial listing page is server-rendered, so it is available in
             # the HTML response but does not always trigger a browser fetch.
             # Subsequent pagination pages still use the captured server action.
             items = _initial_items_from_page_html(page.content())
+            bills_protocol: dict[str, object] | None = None
             while current_page < start_page:
                 next_button = page.get_by_role("button", name="next page button", exact=True).first
                 if not next_button.is_enabled():
                     return
                 current_page += 1
-                next_button.click()
-                items = _wait_for_captured_page_items(page, current_page, document_label=document_label)
+                if document_label == "Bills" and bills_protocol is None:
+                    bills_protocol, items = _capture_bills_protocol(page, next_button, page_url)
+                elif document_label == "Bills":
+                    items = _replay_bills_page(page, bills_protocol, current_page)
+                else:
+                    _click_next_page_and_wait_for_request(page, next_button, current_page, page_url)
+                    items = _wait_for_captured_page_items(page, current_page, document_label=document_label)
             yielded = 0
             while True:
                 mapped = documents_from_items(items)
@@ -454,7 +578,12 @@ def discover_document_pages_for_year_range(
                 if not next_button.is_enabled():
                     return
                 current_page += 1
-                next_button.click()
-                items = _wait_for_captured_page_items(page, current_page, document_label=document_label)
+                if document_label == "Bills" and bills_protocol is None:
+                    bills_protocol, items = _capture_bills_protocol(page, next_button, page_url)
+                elif document_label == "Bills":
+                    items = _replay_bills_page(page, bills_protocol, current_page)
+                else:
+                    _click_next_page_and_wait_for_request(page, next_button, current_page, page_url)
+                    items = _wait_for_captured_page_items(page, current_page, document_label=document_label)
         finally:
             browser.close()

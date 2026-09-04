@@ -1,34 +1,34 @@
-"""Official Sri Lankan Acts listed by documents.gov.lk."""
+"""Official Sri Lankan Bills listed by documents.gov.lk."""
 
 from __future__ import annotations
 
 from datetime import datetime
 from urllib.parse import quote
 
-from ..models import DiscoveredDocument
-from .documents_gov_lk import _get, _initial_items, normalise_language
+from ...models import DiscoveredDocument
+from .common import get, initial_items, normalise_language
 
 
-ACTS_URL = "https://documents.gov.lk/web/acts"
+BILLS_URL = "https://documents.gov.lk/web/bills"
 
 
-def documents_from_act_items(
-    items: list[dict[str, object]], *, page_url: str = ACTS_URL
+def documents_from_bill_items(
+    items: list[dict[str, object]], *, page_url: str = BILLS_URL
 ) -> list[DiscoveredDocument]:
-    """Normalize official Acts table records into source documents."""
+    """Normalize official Bills table records into source documents."""
 
     discovered: list[DiscoveredDocument] = []
     for item in items:
-        number = str(item.get("actNoText") or "").strip()
+        number = str(item.get("billNoText") or "").strip()
         if not number:
             continue
-
         title = str(item.get("descriptionEnglish") or item.get("descriptionSinhala") or number)
         published = item.get("date")
-        published_date = None
-        if isinstance(published, str) and published:
-            published_date = datetime.fromisoformat(published.replace("Z", "+00:00")).date().isoformat()
-
+        published_date = (
+            datetime.fromisoformat(published.replace("Z", "+00:00")).date().isoformat()
+            if isinstance(published, str) and published
+            else None
+        )
         contents = item.get("contents")
         if not isinstance(contents, list):
             continue
@@ -39,11 +39,10 @@ def documents_from_act_items(
             language = normalise_language(str(content.get("language") or ""))
             if not isinstance(uploaded_file, str) or not uploaded_file or not language:
                 continue
-
             discovered.append(
                 DiscoveredDocument(
                     source="documents.gov.lk",
-                    document_type="act",
+                    document_type="bill",
                     source_id=number.replace("/", "-"),
                     title=title,
                     official_page_url=page_url,
@@ -57,7 +56,7 @@ def documents_from_act_items(
     return discovered
 
 
-def discover_acts(*, page_url: str = ACTS_URL) -> list[DiscoveredDocument]:
-    """Discover the Acts on the first official listing page."""
+def discover_bills(*, page_url: str = BILLS_URL) -> list[DiscoveredDocument]:
+    """Discover Bills on the first official listing page."""
 
-    return documents_from_act_items(_initial_items(_get(page_url).decode("utf-8")), page_url=page_url)
+    return documents_from_bill_items(initial_items(get(page_url).decode("utf-8")), page_url=page_url)

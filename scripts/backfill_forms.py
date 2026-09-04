@@ -1,8 +1,8 @@
 """Backfill official General Forms archive years into private R2 storage."""
 from __future__ import annotations
 import argparse, os
-from legalai_ingestion.connectors.documents_gov_lk import download_pdf
-from legalai_ingestion.connectors.documents_gov_lk_forms_archive import discover_forms_for_year_range
+from legalai_ingestion.connectors.documents_gov_lk.common import download_pdf
+from legalai_ingestion.connectors.documents_gov_lk.forms_archive import discover_forms_for_year_range
 from legalai_ingestion.pipeline import store_documents
 from legalai_ingestion.storage.r2 import R2ObjectStore
 def required(name: str) -> str:

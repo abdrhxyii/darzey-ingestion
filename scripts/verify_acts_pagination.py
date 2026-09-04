@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from legalai_ingestion.connectors.documents_gov_lk_acts_archive import discover_acts_for_year_range
+from legalai_ingestion.connectors.documents_gov_lk.acts_archive import discover_acts_for_year_range
 
 
 def main() -> int:

@@ -7,12 +7,11 @@ import os
 from collections.abc import Callable, Iterator
 
 from legalai_ingestion.backfill_state import load_checkpoint, save_checkpoint
-from legalai_ingestion.connectors.documents_gov_lk import download_pdf
-from legalai_ingestion.connectors.documents_gov_lk_acts_archive import discover_act_pages_for_year_range
-from legalai_ingestion.connectors.documents_gov_lk_bills_archive import discover_bill_pages_for_year_range
-from legalai_ingestion.connectors.documents_gov_lk_forms_archive import discover_form_pages_for_year_range
-from legalai_ingestion.connectors.documents_gov_lk_gazettes_archive import discover_gazette_pages_for_year_range
-from legalai_ingestion.connectors.documents_gov_lk_archive import DiscoveredDocumentPage
+from legalai_ingestion.connectors.documents_gov_lk.common import download_pdf
+from legalai_ingestion.connectors.documents_gov_lk.acts_archive import discover_act_pages_for_year_range
+from legalai_ingestion.connectors.documents_gov_lk.bills_archive import discover_bill_pages_for_year_range
+from legalai_ingestion.connectors.documents_gov_lk.forms_archive import discover_form_pages_for_year_range
+from legalai_ingestion.connectors.documents_gov_lk.archive import DiscoveredDocumentPage
 from legalai_ingestion.pipeline import IngestionSummary, store_documents
 from legalai_ingestion.storage.r2 import R2ObjectStore
 
@@ -20,7 +19,6 @@ Discoverer = Callable[..., Iterator[DiscoveredDocumentPage]]
 DISCOVERERS: dict[str, Discoverer] = {
     "act": discover_act_pages_for_year_range,
     "bill": discover_bill_pages_for_year_range,
-    "gazette": discover_gazette_pages_for_year_range,
     "general-form": discover_form_pages_for_year_range,
 }
 

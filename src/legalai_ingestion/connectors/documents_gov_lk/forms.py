@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from urllib.parse import quote
 
-from ..models import DiscoveredDocument
-from .documents_gov_lk import _get, _initial_items, normalise_language
+from ...models import DiscoveredDocument
+from .common import get, initial_items, normalise_language
 
 
 FORMS_URL = "https://documents.gov.lk/web/general_forms"
@@ -43,4 +43,4 @@ def documents_from_form_items(items: list[dict[str, object]], *, page_url: str =
 
 
 def discover_forms(*, page_url: str = FORMS_URL) -> list[DiscoveredDocument]:
-    return documents_from_form_items(_initial_items(_get(page_url).decode("utf-8")), page_url=page_url)
+    return documents_from_form_items(initial_items(get(page_url).decode("utf-8")), page_url=page_url)
